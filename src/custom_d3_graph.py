@@ -1329,67 +1329,88 @@ class CustomD3ForceGraph:
 <body>
     <div class="graph-container">
         <div class="controls">
-            <div><strong>🎮 Controls</strong></div>
-            <div>• Drag nodes to move them</div>
-            <div>• Scroll to zoom (1% - 1000%)</div>
-            <div>• Nodes stick where dragged</div>
-            <div>• Click port nodes to see descriptions</div>
-            <div>• Double-click non-share nodes to release</div>
-            <div>• Double-click share nodes to open in Explorer</div>
-            <div>• Right-click network nodes to collapse/expand</div>
-            <button onclick="showScanData()" style="margin-top: 10px; background: #1a237e; color: white; border: 1px solid #FFFF00; padding: 5px; border-radius: 3px; cursor: pointer;">📄 Show Scan Data</button>
-            <div style="margin-top: 10px;">
-                <button onclick="zoomToFit()" style="background: #2E7D32; color: white; border: 1px solid #4CAF50; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🔍 Fit All</button>
-                <button onclick="zoomReset()" style="background: #1976D2; color: white; border: 1px solid #2196F3; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🎯 Reset</button>
-                <button onclick="zoomOut()" style="background: #D32F2F; color: white; border: 1px solid #F44336; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🔍− Out</button>
-                <button onclick="zoomIn()" style="background: #388E3C; color: white; border: 1px solid #4CAF50; padding: 3px 6px; border-radius: 3px; cursor: pointer;">🔍+ In</button>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong>🎮 Controls</strong>
+                <button onclick="toggleControls()" style="background: transparent; color: #FFFF00; border: 1px solid #FFFF00; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="controls-toggle">📚 Hide</button>
+            </div>
+            <div id="controls-content">
+                <div>• Drag nodes to move them</div>
+                <div>• Scroll to zoom (1% - 1000%)</div>
+                <div>• Nodes stick where dragged</div>
+                <div>• Click port nodes to see descriptions</div>
+                <div>• Double-click non-share nodes to release</div>
+                <div>• Double-click share nodes to open in Explorer</div>
+                <div>• Right-click network nodes to collapse/expand</div>
+                <div style="margin-top: 8px; font-size: 11px; color: #AAA;">
+                    <strong>Keyboard Shortcuts:</strong><br>
+                    • Alt+C: Toggle Controls<br>
+                    • Alt+I: Toggle Info Panel<br>
+                    • Alt+L: Toggle Legend
+                </div>
+                <button onclick="showScanData()" style="margin-top: 10px; background: #1a237e; color: white; border: 1px solid #FFFF00; padding: 5px; border-radius: 3px; cursor: pointer;">📄 Show Scan Data</button>
+                <div style="margin-top: 10px;">
+                    <button onclick="zoomToFit()" style="background: #2E7D32; color: white; border: 1px solid #4CAF50; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🔍 Fit All</button>
+                    <button onclick="zoomReset()" style="background: #1976D2; color: white; border: 1px solid #2196F3; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🎯 Reset</button>
+                    <button onclick="zoomOut()" style="background: #D32F2F; color: white; border: 1px solid #F44336; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🔍− Out</button>
+                    <button onclick="zoomIn()" style="background: #388E3C; color: white; border: 1px solid #4CAF50; padding: 3px 6px; border-radius: 3px; cursor: pointer;">🔍+ In</button>
+                </div>
             </div>
         </div>
         
         <div class="info-panel">
-            <div><strong>📊 Network Graph</strong></div>
-            <div id="node-count">Nodes: {len(self.nodes)}</div>
-            <div id="link-count">Links: {len(self.links)}</div>
-            <div id="selected-info"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong>📊 Network Graph</strong>
+                <button onclick="toggleInfoPanel()" style="background: transparent; color: #FFFF00; border: 1px solid #FFFF00; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="info-toggle">📚 Hide</button>
+            </div>
+            <div id="info-content">
+                <div id="node-count">Nodes: {len(self.nodes)}</div>
+                <div id="link-count">Links: {len(self.links)}</div>
+                <div id="selected-info"></div>
+            </div>
         </div>
         
         <div class="legend">
-            <div><strong>🎯 Legend</strong></div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #607D8B;"></div>
-                <span>Class A Networks</span>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong>🎯 Legend</strong>
+                <button onclick="toggleLegend()" style="background: transparent; color: #FFFF00; border: 1px solid #FFFF00; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="legend-toggle">📚 Hide</button>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #795548;"></div>
-                <span>Class B Networks</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #8BC34A;"></div>
-                <span>Class C Networks</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #4CAF50;"></div>
-                <span>Hosts</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #F44336;"></div>
-                <span>⚠️ Risky Ports (FTP, RDP, DBs, etc.)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #2196F3;"></div>
-                <span>Safe Ports (HTTP, HTTPS, SSH, etc.)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #8B0000;"></div>
-                <span>Shares Container</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #B71C1C;"></div>
-                <span>Individual Shares (double-click to open)</span>
-            </div>
-            <div style="margin-top: 10px; font-size: 10px; color: #ccc;">
-                💡 Double-click share nodes to open in File Explorer<br>
-                🔒 Red ports indicate high security risk
+            <div id="legend-content">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #607D8B;"></div>
+                    <span>Class A Networks</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #795548;"></div>
+                    <span>Class B Networks</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #8BC34A;"></div>
+                    <span>Class C Networks</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4CAF50;"></div>
+                    <span>Hosts</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #F44336;"></div>
+                    <span>⚠️ Risky Ports (FTP, RDP, DBs, etc.)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #2196F3;"></div>
+                    <span>Safe Ports (HTTP, HTTPS, SSH, etc.)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #8B0000;"></div>
+                    <span>Shares Container</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #B71C1C;"></div>
+                    <span>Individual Shares (double-click to open)</span>
+                </div>
+                <div style="margin-top: 10px; font-size: 10px; color: #ccc;">
+                    💡 Double-click share nodes to open in File Explorer<br>
+                    🔒 Red ports indicate high security risk
+                </div>
             </div>
         </div>
         
@@ -1863,6 +1884,69 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
                 .duration(200)
                 .call(zoom.scaleBy, 1 / 1.5);
         }}
+        
+        // Panel toggle functions for better screen space management
+        function toggleControls() {{
+            const content = document.getElementById('controls-content');
+            const toggle = document.getElementById('controls-toggle');
+            
+            if (content.style.display === 'none') {{
+                content.style.display = 'block';
+                toggle.innerHTML = '📚 Hide';
+            }} else {{
+                content.style.display = 'none';
+                toggle.innerHTML = '📖 Show';
+            }}
+        }}
+        
+        function toggleInfoPanel() {{
+            const content = document.getElementById('info-content');
+            const toggle = document.getElementById('info-toggle');
+            
+            if (content.style.display === 'none') {{
+                content.style.display = 'block';
+                toggle.innerHTML = '📚 Hide';
+            }} else {{
+                content.style.display = 'none';
+                toggle.innerHTML = '📖 Show';
+            }}
+        }}
+        
+        function toggleLegend() {{
+            const content = document.getElementById('legend-content');
+            const toggle = document.getElementById('legend-toggle');
+            
+            if (content.style.display === 'none') {{
+                content.style.display = 'block';
+                toggle.innerHTML = '📚 Hide';
+            }} else {{
+                content.style.display = 'none';
+                toggle.innerHTML = '📖 Show';
+            }}
+        }}
+        
+        // Add keyboard shortcuts for quick panel toggling
+        document.addEventListener('keydown', function(event) {{
+            if (event.altKey) {{
+                switch(event.key) {{
+                    case 'c':
+                    case 'C':
+                        toggleControls();
+                        event.preventDefault();
+                        break;
+                    case 'i':
+                    case 'I':
+                        toggleInfoPanel();
+                        event.preventDefault();
+                        break;
+                    case 'l':
+                    case 'L':
+                        toggleLegend();
+                        event.preventDefault();
+                        break;
+                }}
+            }}
+        }});
     </script>
 </body>
 </html>
