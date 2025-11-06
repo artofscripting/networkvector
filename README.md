@@ -4,6 +4,8 @@
 
 Network Vector is a powerful, Python-based network scanning tool that performs comprehensive TCP port discovery without relying on external tools like nmap or masscan. It creates beautiful, interactive D3.js visualizations to map network topology and security posture.
 
+![Network Vector Screenshot](assets/Screenshot.png)
+
 ![Network Vector Banner](https://img.shields.io/badge/Network-Vector-blue?style=for-the-badge&logo=network&logoColor=white)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -12,7 +14,7 @@ Network Vector is a powerful, Python-based network scanning tool that performs c
 
 ### 🚀 Core Capabilities
 - **Raw TCP Port Scanning** - Scans 998 unique ports without external dependencies
-- **Multi-threaded Performance** - Up to 200 concurrent threads for fast scanning
+- **Multi-threaded Performance** - Up to 1000 concurrent threads for fast scanning
 - **Network Topology Discovery** - Automatic CIDR-based network hierarchy visualization
 - **Interactive D3.js Graphs** - Professional force-directed network visualizations
 - **SMB Share Enumeration** - Cross-platform Windows/Linux share discovery
@@ -22,22 +24,39 @@ Network Vector is a powerful, Python-based network scanning tool that performs c
 - **Professional Network Icons** - SVG-based network topology representation
 - **Host Icons** - PNG icons with embedded base64 encoding for self-contained HTML
 - **Color-coded Security** - Risk-based port classification (red=dangerous, blue=safe)
-- **Interactive Port Information** - 130+ ports with detailed descriptions and security assessments
+- **Interactive Port Information** - Double-click ports for detailed descriptions and security assessments
 - **Sticky Node Behavior** - Drag-and-drop node positioning with persistence
 - **Collapse/Expand** - Right-click network nodes to manage complexity
 - **Self-contained Output** - HTML files with embedded assets, no external dependencies
+- **Embedded Scan Data** - Complete scan results embedded in HTML with "Show Scan Data" button
 
 ### 🔍 Port Intelligence
 - **Comprehensive Database** - Detailed information for 130+ common services
-- **Security Assessment** - Risk levels and vulnerability information
+- **Security Assessment** - Risk levels and vulnerability information for each port
 - **Educational Links** - Direct links to service documentation and security resources
 - **Service Detection** - Automatic identification of running services
+- **Real-time Display** - Interactive port information on double-click
 
 ## 🛠️ Installation
 
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.8 or higher (for source code)
 - Windows, Linux, or macOS
+- **OR use the pre-built executable (no Python required!)**
+
+### Option 1: Pre-built Executable (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/artofscripting/networkvector.git
+cd networkvector
+
+# Run immediately with no setup required
+./nvector.exe 192.168.1.0/24
+
+# All features included: 1000 threads, embedded data, interactive visualization
+```
+
+### Option 2: Python Source
 
 ### Quick Start
 ```bash
@@ -47,11 +66,14 @@ cd networkvector
 
 # Install dependencies (none required - uses only Python standard library!)
 
-# Run a basic scan
+# Run a basic scan (uses 1000 threads by default for maximum speed)
 python src/nvector.py 192.168.1.1
 
 # Scan entire network with full features
 python src/nvector.py 192.168.1.0/24 --resolve-hostnames --enumerate-shares
+
+# Use the pre-built executable (no Python required!)
+./nvector.exe 192.168.1.0/24
 ```
 
 ### Build Executable (Optional)
@@ -59,19 +81,27 @@ python src/nvector.py 192.168.1.0/24 --resolve-hostnames --enumerate-shares
 # Install PyInstaller
 pip install pyinstaller
 
-# Build standalone executable
-pyinstaller --onefile --name="nvector" src/nvector.py
+# Navigate to source directory
+cd src
+
+# Build standalone executable with all dependencies
+pyinstaller --onefile --add-data "custom_d3_graph.py;." --hidden-import=webbrowser --name="nvector" nvector.py
 
 # Run the executable
 ./dist/nvector.exe 192.168.1.0/24
 ```
 
+**Pre-built Executable Available**: A ready-to-use `nvector.exe` is included in the repository for immediate use without Python installation.
+
 ## 📖 Usage Examples
 
 ### Basic Network Scan
 ```bash
-# Scan a single host
+# Scan a single host (uses 1000 threads by default)
 python src/nvector.py 192.168.1.100
+
+# Or use the pre-built executable
+./nvector.exe 192.168.1.100
 
 # Scan a network range
 python src/nvector.py 192.168.1.0/24
@@ -79,25 +109,25 @@ python src/nvector.py 192.168.1.0/24
 
 ### Advanced Scanning
 ```bash
-# Full feature scan with hostname resolution and SMB enumeration
+# Full feature scan with hostname resolution and SMB enumeration (default 1000 threads)
 python src/nvector.py 192.168.1.0/24 --resolve-hostnames --enumerate-shares
 
-# High-speed scan with custom threading
-python src/nvector.py 192.168.1.0/24 --threads 100
+# Reduce threads for stealth scanning
+python src/nvector.py 192.168.1.0/24 --threads 50
 
 # Custom port range
 python src/nvector.py 192.168.1.1 --ports 22 80 443 3389 5432
 
 # Custom timeout for slow networks
 python src/nvector.py 192.168.1.0/24 --timeout 2.0
+
+# Maximum performance with executable
+./nvector.exe 192.168.1.0/24 --threads 1000
 ```
 
 ### Output Options
 ```bash
-# Custom output file
-python src/nvector.py 192.168.1.0/24 --output my_scan.json
-
-# Skip graph generation (JSON only)
+# Skip graph generation (console output only)
 python src/nvector.py 192.168.1.0/24 --no-graph
 
 # Disable specific features
@@ -110,40 +140,31 @@ python src/nvector.py 192.168.1.0/24 --no-resolve-hostnames --no-enumerate-share
 |--------|-------------|---------|
 | `target` | IP address or network (e.g., 192.168.1.1 or 192.168.1.0/24) | Required |
 | `--timeout` | Connection timeout in seconds | 0.5 |
-| `--threads` | Maximum number of scanning threads | 200 |
+| `--threads` | Maximum number of scanning threads | 1000 |
 | `--ports` | Custom ports to scan | 998 common ports |
-| `--output` | Output JSON filename | scan_results.json |
 | `--no-graph` | Skip D3.js visualization generation | Enabled |
 | `--no-resolve-hostnames` | Disable reverse DNS lookup | Enabled |
 | `--no-enumerate-shares` | Disable SMB share enumeration | Enabled |
 
-## 📊 Output Formats
-
-### JSON Results
-Detailed scan results in structured JSON format:
-```json
-{
-  "scan_info": {
-    "target": "192.168.1.0/24",
-    "total_hosts": 5,
-    "scan_time": 45.2
-  },
-  "hosts": {
-    "192.168.1.1": {
-      "hostname": "router.local",
-      "open_ports": [22, 80, 443],
-      "shares": []
-    }
-  }
-}
-```
+## 📊 Output Format
 
 ### Interactive HTML Visualization
-- **Force-directed network graph** with D3.js
-- **Professional network topology** representation
-- **Interactive port information** with security details
-- **Self-contained HTML** with embedded assets
+Network Vector generates a single, self-contained HTML file with:
+- **Force-directed network graph** with D3.js v7
+- **Professional network topology** representation with SVG icons
+- **Interactive port information** with security details for 130+ ports
+- **Embedded scan data** - complete analysis data built into the HTML file
+- **Show Scan Data button** - view raw scan results without separate JSON files
 - **Responsive design** for desktop and mobile viewing
+- **Timestamped filename** for historical tracking (e.g., `network_scan_20251106_141532.html`)
+- **No external dependencies** - works offline with all assets embedded
+
+### Key Features:
+- **Drag-and-drop nodes** with sticky positioning
+- **Right-click collapse/expand** for network organization
+- **Double-click port details** with security assessments
+- **Color-coded risk levels** (red for dangerous, blue for safe ports)
+- **Network hierarchy visualization** with CIDR-based topology
 
 ## 🔧 Technical Details
 

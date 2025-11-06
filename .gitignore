@@ -51,7 +51,6 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-scan_results*.json
 network_scan*.html
 *.log
 

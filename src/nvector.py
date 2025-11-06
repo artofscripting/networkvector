@@ -107,7 +107,7 @@ class SMBShareEnumerator:
         return []
 
 class RawPortScanner:
-    def __init__(self, timeout=1.0, max_threads=100, resolve_hostnames=False, enumerate_shares=False):
+    def __init__(self, timeout=1.0, max_threads=1000, resolve_hostnames=False, enumerate_shares=False):
         self.timeout = timeout
         self.max_threads = max_threads
         self.resolve_hostnames = resolve_hostnames
@@ -241,9 +241,8 @@ def main():
     parser = argparse.ArgumentParser(description='Network Vector - Advanced Network Topology Scanner')
     parser.add_argument('target', help='Target IP address or network (e.g., 192.168.1.1 or 192.168.1.0/24)')
     parser.add_argument('--timeout', type=float, default=0.5, help='Connection timeout in seconds (default: 0.5)')
-    parser.add_argument('--threads', type=int, default=200, help='Maximum number of threads (default: 200)')
+    parser.add_argument('--threads', type=int, default=1000, help='Maximum number of threads (default: 1000)')
     parser.add_argument('--ports', nargs='+', type=int, help='Custom ports to scan (default: top 100)')
-    parser.add_argument('--output', default='scan_results.json', help='Output JSON file (default: scan_results.json)')
     parser.add_argument('--no-graph', action='store_true', help='Skip graph visualization')
     parser.add_argument('--no-resolve-hostnames', action='store_true', help='Disable hostname resolution (enabled by default)')
     parser.add_argument('--no-enumerate-shares', action='store_true', help='Disable SMB share enumeration (enabled by default)')
@@ -295,28 +294,31 @@ def main():
                 if not args.no_enumerate_shares and scanner.share_results:
                     print("Note: Discovered shares will be connected to dedicated 'Shares' nodes for each host")
                 
+                # Create timestamped filename
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                html_filename = f"network_scan_{timestamp}.html"
+                
+                # Prepare scan data for embedding
+                scan_data = {
+                    'scan_results': results,
+                    'share_results': scanner.share_results if scanner.share_results else {},
+                    'timestamp': time.time(),
+                    'scan_info': {
+                        'target': args.target,
+                        'total_hosts': len(results),
+                        'scan_time': f"Completed at {time.strftime('%Y-%m-%d %H:%M:%S')}",
+                        'ports_scanned': len(ports_to_scan),
+                        'hostname_resolution': not args.no_resolve_hostnames,
+                        'share_enumeration': not args.no_enumerate_shares
+                    }
+                }
+                
                 # Use custom D3.js graph (now the only option)
                 custom_graph = create_custom_graph_from_scan(results, scanner.share_results)
-                output_file = custom_graph.save_and_show("network_scan.html")
+                output_file = custom_graph.save_and_show(html_filename, scan_data)
                 print(f"Custom D3 graph saved to: {output_file}")
                 print("Interactive graph opened in browser!")
-                
-                # Save results to JSON
-                with open(args.output, 'w') as f:
-                    json.dump({
-                        'scan_results': results,
-                        'share_results': scanner.share_results if scanner.share_results else {},
-                        'timestamp': time.time(),
-                        'scan_info': {
-                            'target': args.target,
-                            'timeout': args.timeout,
-                            'threads': args.threads,
-                            'resolve_hostnames': not args.no_resolve_hostnames,
-                            'enumerate_shares': not args.no_enumerate_shares
-                        }
-                    }, f, indent=2)
-                
-                print(f"Results saved to {args.output}")
             
         else:
             print("\nNo open ports found on any hosts.")

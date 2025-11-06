@@ -1175,14 +1175,24 @@ class CustomD3ForceGraph:
                     # Link shares node to individual share
                     self.add_link(shares_node_id, share_node_id, weight=1, color="#FFFF00")
     
-    def generate_html(self, title: str = "Network Topology", width: int = 1200, height: int = 800):
+    def generate_html(self, title: str = "Network Topology", width: int = 1200, height: int = 800, scan_data: Dict = None):
         """
-        Generate the complete HTML with embedded D3.js force-directed graph.
+        Generate the complete HTML with embedded D3.js force-directed graph and optional scan data.
         """
         
         # Convert data to JSON
         nodes_json = json.dumps(self.nodes, indent=2)
         links_json = json.dumps(self.links, indent=2)
+        port_descriptions_json = json.dumps(PORT_DESCRIPTIONS, indent=2)
+        
+        # Embed scan data if provided
+        scan_data_js = ""
+        if scan_data:
+            scan_data_json = json.dumps(scan_data, indent=2)
+            scan_data_js = f"""
+        // Embedded scan results for self-contained analysis
+        window.SCAN_DATA = {scan_data_json};
+        console.log('📊 Scan data embedded:', window.SCAN_DATA);"""
         port_descriptions_json = json.dumps(PORT_DESCRIPTIONS, indent=2)
         
         html_content = f"""
@@ -1326,6 +1336,7 @@ class CustomD3ForceGraph:
             <div>• Click port nodes to see descriptions</div>
             <div>• Double-click non-share nodes to release</div>
             <div>• Double-click share nodes to open in Explorer</div>
+            <button onclick="showScanData()" style="margin-top: 10px; background: #1a237e; color: white; border: 1px solid #FFFF00; padding: 5px; border-radius: 3px; cursor: pointer;">📄 Show Scan Data</button>
         </div>
         
         <div class="info-panel">
@@ -1383,6 +1394,7 @@ class CustomD3ForceGraph:
         const nodes = {nodes_json};
         const links = {links_json};
         const portDescriptions = {port_descriptions_json};
+        {scan_data_js}
         
         console.log("🎯 Loading custom D3 force-directed graph...");
         console.log("📊 Nodes:", nodes.length, "Links:", links.length);
@@ -1768,6 +1780,43 @@ class CustomD3ForceGraph:
         console.log("✅ Custom D3 force-directed graph loaded successfully!");
         console.log("🟡 Yellow edges enforced automatically");
         console.log("📌 Sticky node behavior enabled");
+        
+        // Function to display embedded scan data
+        function showScanData() {{
+            if (window.SCAN_DATA) {{
+                const scanInfo = window.SCAN_DATA.scan_info;
+                const totalHosts = Object.keys(window.SCAN_DATA.scan_results).length;
+                const totalShares = Object.keys(window.SCAN_DATA.share_results || {{}}).length;
+                
+                const info = `📊 SCAN RESULTS SUMMARY
+                
+🎯 Target: ${{scanInfo.target}}
+🖥️  Total Hosts Found: ${{totalHosts}}
+📂 Hosts with Shares: ${{totalShares}}
+🔍 Ports Scanned: ${{scanInfo.ports_scanned}}
+🌐 Hostname Resolution: ${{scanInfo.hostname_resolution ? 'Enabled' : 'Disabled'}}
+🗂️  Share Enumeration: ${{scanInfo.share_enumeration ? 'Enabled' : 'Disabled'}}
+⏰ Scan Time: ${{scanInfo.scan_time}}
+
+📋 DETAILED RESULTS:
+${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
+                
+                // Create a popup window or alert with the data
+                const popup = window.open('', 'ScanData', 'width=800,height=600,scrollbars=yes');
+                popup.document.write(`
+                    <html>
+                        <head><title>Network Vector - Scan Results</title></head>
+                        <body style="font-family: monospace; background: #1a237e; color: white; padding: 20px;">
+                            <h2>🌐 Network Vector - Embedded Scan Data</h2>
+                            <pre style="white-space: pre-wrap; background: #000; padding: 15px; border-radius: 5px;">${{info}}</pre>
+                            <button onclick="window.close()" style="margin-top: 20px; background: #FFFF00; color: #000; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+                        </body>
+                    </html>
+                `);
+            }} else {{
+                alert('❌ No scan data found embedded in this file.');
+            }}
+        }}
     </script>
 </body>
 </html>
@@ -1775,11 +1824,11 @@ class CustomD3ForceGraph:
         
         return html_content
     
-    def save_and_show(self, filename: str = "custom_network_graph.html", auto_open: bool = True):
+    def save_and_show(self, filename: str = "custom_network_graph.html", scan_data: Dict = None, auto_open: bool = True):
         """
-        Save the HTML file and optionally open it in the browser.
+        Save the HTML file with embedded scan data and optionally open it in the browser.
         """
-        html_content = self.generate_html()
+        html_content = self.generate_html(scan_data=scan_data)
         
         # Save to file
         filepath = os.path.abspath(filename)
@@ -1788,13 +1837,15 @@ class CustomD3ForceGraph:
         
         print(f"✅ Custom D3 force-directed graph saved to: {filepath}")
         print(f"📊 Graph contains {len(self.nodes)} nodes and {len(self.links)} links")
-        print(f"🟡 All edges are bright yellow with 2px width")
-        print(f"📌 Sticky node behavior: drag nodes to move them permanently")
+        #print(f"🟡 All edges are bright yellow with 2px width")
+        #print(f"📌 Sticky node behavior: drag nodes to move them permanently")
+        if scan_data:
+            print(f"📄 Scan results embedded in HTML for self-contained analysis")
         
         if auto_open:
             try:
                 webbrowser.open(f"file://{filepath}")
-                print("🌐 Graph opened in browser!")
+                #print("🌐 Graph opened in browser!")
             except Exception as e:
                 print(f"⚠️ Could not auto-open browser: {e}")
                 print(f"📂 Manually open: {filepath}")

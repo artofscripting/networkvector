@@ -17,7 +17,7 @@ setup(
     version="1.0.0",
     author="ArtOfScripting",
     author_email="contact@artofscripting.com",
-    description="Advanced Network Topology Scanner with Interactive D3.js Visualization",
+    description="Advanced Network Topology Scanner with Interactive D3.js Visualization - High Performance (1000 threads)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/artofscripting/networkvector",
