@@ -1331,12 +1331,19 @@ class CustomD3ForceGraph:
         <div class="controls">
             <div><strong>🎮 Controls</strong></div>
             <div>• Drag nodes to move them</div>
-            <div>• Scroll to zoom</div>
+            <div>• Scroll to zoom (1% - 1000%)</div>
             <div>• Nodes stick where dragged</div>
             <div>• Click port nodes to see descriptions</div>
             <div>• Double-click non-share nodes to release</div>
             <div>• Double-click share nodes to open in Explorer</div>
+            <div>• Right-click network nodes to collapse/expand</div>
             <button onclick="showScanData()" style="margin-top: 10px; background: #1a237e; color: white; border: 1px solid #FFFF00; padding: 5px; border-radius: 3px; cursor: pointer;">📄 Show Scan Data</button>
+            <div style="margin-top: 10px;">
+                <button onclick="zoomToFit()" style="background: #2E7D32; color: white; border: 1px solid #4CAF50; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🔍 Fit All</button>
+                <button onclick="zoomReset()" style="background: #1976D2; color: white; border: 1px solid #2196F3; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🎯 Reset</button>
+                <button onclick="zoomOut()" style="background: #D32F2F; color: white; border: 1px solid #F44336; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🔍− Out</button>
+                <button onclick="zoomIn()" style="background: #388E3C; color: white; border: 1px solid #4CAF50; padding: 3px 6px; border-radius: 3px; cursor: pointer;">🔍+ In</button>
+            </div>
         </div>
         
         <div class="info-panel">
@@ -1407,9 +1414,9 @@ class CustomD3ForceGraph:
             .attr("width", width)
             .attr("height", height);
         
-        // Add zoom behavior
+        // Add zoom behavior with extended zoom out capability for large networks
         const zoom = d3.zoom()
-            .scaleExtent([0.1, 4])
+            .scaleExtent([0.01, 10])  // Allow zoom out to 1% and zoom in to 1000%
             .on("zoom", function(event) {{
                 container.attr("transform", event.transform);
             }});
@@ -1816,6 +1823,45 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
             }} else {{
                 alert('❌ No scan data found embedded in this file.');
             }}
+        }}
+        
+        // Zoom control functions for large network navigation
+        function zoomToFit() {{
+            const bounds = container.node().getBBox();
+            const parent = container.node().parentElement;
+            const fullWidth = parent.clientWidth;
+            const fullHeight = parent.clientHeight;
+            const width = bounds.width;
+            const height = bounds.height;
+            const midX = bounds.x + width / 2;
+            const midY = bounds.y + height / 2;
+            
+            if (width == 0 || height == 0) return; // nothing to fit
+            
+            const scale = Math.min(fullWidth / width, fullHeight / height) * 0.8; // 80% to add margin
+            const translate = [fullWidth / 2 - midX * scale, fullHeight / 2 - midY * scale];
+            
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale));
+        }}
+        
+        function zoomReset() {{
+            svg.transition()
+                .duration(500)
+                .call(zoom.transform, d3.zoomIdentity);
+        }}
+        
+        function zoomIn() {{
+            svg.transition()
+                .duration(200)
+                .call(zoom.scaleBy, 1.5);
+        }}
+        
+        function zoomOut() {{
+            svg.transition()
+                .duration(200)
+                .call(zoom.scaleBy, 1 / 1.5);
         }}
     </script>
 </body>
