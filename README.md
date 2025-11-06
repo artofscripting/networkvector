@@ -50,11 +50,16 @@ Network Vector is a powerful, Python-based network scanning tool that performs c
 git clone https://github.com/artofscripting/networkvector.git
 cd networkvector
 
+# Download the latest executable from Releases tab on GitHub
+# Or build it yourself using the instructions below
+
 # Run immediately with no setup required
 ./nvector.exe 192.168.1.0/24
 
 # All features included: 1000 threads, embedded data, interactive visualization
 ```
+
+**Note**: Pre-built executables are available in the [Releases section](https://github.com/artofscripting/networkvector/releases) of this repository.
 
 ### Option 2: Python Source
 
