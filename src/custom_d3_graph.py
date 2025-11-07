@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Custom D3.js Force-Directed Graph Generator
-Creates a pure D3.js force-directed chart without using the d3graph library.
-This gives us full control over styling, including yellow edges and sticky nodes.
+Custom D3.js Force-Directed Graph Generator for Network Vector
+
+Creates interactive network topology visualizations with D3.js v7.
+Features include force simulation, node interactions, and enhanced UI.
 """
 
 import json
@@ -11,930 +12,11 @@ import tempfile
 import webbrowser
 from typing import Dict, List, Set, Any
 
-# Port descriptions database with enhanced information and learning links
-PORT_DESCRIPTIONS = {
-    # System and well-known ports (1-1023)
-    1: {
-        "description": "TCP Port Service Multiplexer",
-        "details": "System port for TCP port service multiplexer. Rarely used in modern systems.",
-        "security": "LOW RISK - System reserved port",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    2: {
-        "description": "CompressNET Management Utility",
-        "details": "Legacy compression service management. Not commonly used.",
-        "security": "LOW RISK - Legacy system service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    3: {
-        "description": "Compression Process",
-        "details": "Data compression service. Legacy protocol rarely seen today.",
-        "security": "LOW RISK - Legacy compression service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    5: {
-        "description": "Remote Job Entry",
-        "details": "Remote job entry protocol for mainframe systems. Legacy service.",
-        "security": "MEDIUM RISK - Legacy remote access",
-        "link": "https://en.wikipedia.org/wiki/Remote_job_entry"
-    },
-    7: {
-        "description": "Echo Protocol",
-        "details": "Simple network testing protocol that echoes back received data.",
-        "security": "LOW RISK - Network testing service",
-        "link": "https://tools.ietf.org/html/rfc862"
-    },
-    9: {
-        "description": "Discard Protocol",
-        "details": "Null service that discards all received data. Used for testing.",
-        "security": "LOW RISK - Testing service",
-        "link": "https://tools.ietf.org/html/rfc863"
-    },
-    11: {
-        "description": "Active Users (systat)",
-        "details": "System status protocol showing active users. Security risk if exposed.",
-        "security": "MEDIUM RISK - Exposes system information",
-        "link": "https://tools.ietf.org/html/rfc866"
-    },
-    13: {
-        "description": "Daytime Protocol",
-        "details": "Returns current date and time in human-readable format.",
-        "security": "LOW RISK - Time service",
-        "link": "https://tools.ietf.org/html/rfc867"
-    },
-    15: {
-        "description": "Netstat Service",
-        "details": "Returns network status information. Can expose network topology.",
-        "security": "MEDIUM RISK - Network information disclosure",
-        "link": "https://en.wikipedia.org/wiki/Netstat"
-    },
-    17: {
-        "description": "Quote of the Day (QOTD)",
-        "details": "Returns a quote or message. Sometimes exploited for DDoS amplification.",
-        "security": "MEDIUM RISK - Can be used for amplification attacks",
-        "link": "https://tools.ietf.org/html/rfc865"
-    },
-    18: {
-        "description": "Message Send Protocol",
-        "details": "Legacy messaging protocol. Rarely used in modern systems.",
-        "security": "LOW RISK - Legacy messaging",
-        "link": "https://tools.ietf.org/html/rfc1312"
-    },
-    19: {
-        "description": "Character Generator (chargen)",
-        "details": "Generates continuous stream of characters. DDoS amplification risk.",
-        "security": "HIGH RISK - DDoS amplification vector",
-        "link": "https://tools.ietf.org/html/rfc864"
-    },
-    20: {
-        "description": "FTP Data Transfer",
-        "details": "File Transfer Protocol data channel for active mode transfers.",
-        "security": "HIGH RISK - Unencrypted file transfer",
-        "link": "https://en.wikipedia.org/wiki/File_Transfer_Protocol"
-    },
-    21: {
-        "description": "FTP Control - File Transfer Protocol control channel",
-        "details": "Used for uploading/downloading files. Often a security risk if unencrypted.",
-        "security": "HIGH RISK - Unencrypted, credentials sent in plaintext",
-        "link": "https://en.wikipedia.org/wiki/File_Transfer_Protocol"
-    },
-    22: {
-        "description": "SSH - Secure Shell remote access",
-        "details": "Encrypted remote terminal access and secure file transfer (SFTP/SCP).",
-        "security": "SECURE - Encrypted communication",
-        "link": "https://www.openssh.com/"
-    },
-    23: {
-        "description": "Telnet - Unencrypted remote terminal",
-        "details": "Legacy remote terminal protocol. Sends passwords in plaintext.",
-        "security": "HIGH RISK - Unencrypted, avoid using",
-        "link": "https://en.wikipedia.org/wiki/Telnet"
-    },
-    25: {
-        "description": "SMTP - Simple Mail Transfer Protocol",
-        "details": "Email server communication for sending emails between servers.",
-        "security": "MEDIUM - Can be secured with TLS",
-        "link": "https://tools.ietf.org/html/rfc5321"
-    },
-    37: {
-        "description": "Time Protocol",
-        "details": "Network time protocol that returns time since Unix epoch.",
-        "security": "LOW RISK - Time synchronization",
-        "link": "https://tools.ietf.org/html/rfc868"
-    },
-    39: {
-        "description": "Resource Location Protocol",
-        "details": "Legacy resource discovery protocol. Rarely used today.",
-        "security": "LOW RISK - Legacy discovery service",
-        "link": "https://tools.ietf.org/html/rfc887"
-    },
-    42: {
-        "description": "Host Name Server",
-        "details": "Legacy hostname resolution service. Superseded by DNS.",
-        "security": "LOW RISK - Legacy naming service",
-        "link": "https://tools.ietf.org/html/rfc953"
-    },
-    43: {
-        "description": "WHOIS - Domain registration lookup",
-        "details": "Domain and IP address registration information lookup service.",
-        "security": "LOW RISK - Public information service",
-        "link": "https://tools.ietf.org/html/rfc3912"
-    },
-    49: {
-        "description": "TACACS Login Host Protocol",
-        "details": "Terminal Access Controller Access Control System authentication.",
-        "security": "MEDIUM RISK - Authentication service",
-        "link": "https://tools.ietf.org/html/rfc1492"
-    },
-    50: {
-        "description": "Remote Mail Checking Protocol",
-        "details": "Legacy protocol for checking remote mail. Rarely used.",
-        "security": "LOW RISK - Legacy mail service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    53: {
-        "description": "DNS - Domain Name System",
-        "details": "Translates domain names to IP addresses. Critical internet infrastructure.",
-        "security": "LOW RISK - Standard service, can be secured with DoT/DoH",
-        "link": "https://www.cloudflare.com/learning/dns/what-is-dns/"
-    },
-    57: {
-        "description": "MTP - Mail Transfer Protocol",
-        "details": "Legacy mail transfer protocol. Superseded by SMTP.",
-        "security": "LOW RISK - Legacy mail protocol",
-        "link": "https://tools.ietf.org/html/rfc780"
-    },
-    58: {
-        "description": "XNS Mail Protocol",
-        "details": "Xerox Network Systems mail protocol. Legacy system.",
-        "security": "LOW RISK - Legacy Xerox protocol",
-        "link": "https://en.wikipedia.org/wiki/Xerox_Network_Systems"
-    },
-    67: {
-        "description": "DHCP/BOOTP Server",
-        "details": "Dynamic Host Configuration Protocol server for IP address assignment.",
-        "security": "MEDIUM RISK - Network configuration service",
-        "link": "https://tools.ietf.org/html/rfc2131"
-    },
-    68: {
-        "description": "DHCP/BOOTP Client",
-        "details": "Dynamic Host Configuration Protocol client for receiving IP configuration.",
-        "security": "LOW RISK - DHCP client communication",
-        "link": "https://tools.ietf.org/html/rfc2131"
-    },
-    69: {
-        "description": "TFTP - Trivial File Transfer Protocol",
-        "details": "Simple file transfer protocol without authentication. Often insecure.",
-        "security": "HIGH RISK - No authentication, plaintext transfer",
-        "link": "https://tools.ietf.org/html/rfc1350"
-    },
-    70: {
-        "description": "Gopher Protocol",
-        "details": "Legacy hierarchical document system predating the World Wide Web.",
-        "security": "LOW RISK - Legacy document protocol",
-        "link": "https://tools.ietf.org/html/rfc1436"
-    },
-    71: {
-        "description": "NETRJS Protocol",
-        "details": "Network Remote Job Service. Legacy mainframe job submission.",
-        "security": "LOW RISK - Legacy mainframe service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    72: {
-        "description": "NETRJS Protocol (continued)",
-        "details": "Network Remote Job Service continuation. Legacy mainframe service.",
-        "security": "LOW RISK - Legacy mainframe service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    73: {
-        "description": "NETRJS Protocol (continued)",
-        "details": "Network Remote Job Service continuation. Legacy mainframe service.",
-        "security": "LOW RISK - Legacy mainframe service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    74: {
-        "description": "NETRJS Protocol (continued)",
-        "details": "Network Remote Job Service continuation. Legacy mainframe service.",
-        "security": "LOW RISK - Legacy mainframe service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    79: {
-        "description": "Finger Protocol",
-        "details": "User information lookup protocol. Exposes user details and system info.",
-        "security": "HIGH RISK - Information disclosure, privacy concerns",
-        "link": "https://tools.ietf.org/html/rfc1288"
-    },
-    80: {
-        "description": "HTTP - HyperText Transfer Protocol",
-        "details": "Web server communication. Unencrypted web traffic.",
-        "security": "MEDIUM RISK - Unencrypted, use HTTPS instead",
-        "link": "https://developer.mozilla.org/en-US/docs/Web/HTTP"
-    },
-    81: {
-        "description": "HTTP Alternate",
-        "details": "Alternative HTTP port often used for web administration or proxies.",
-        "security": "MEDIUM RISK - Unencrypted web traffic",
-        "link": "https://developer.mozilla.org/en-US/docs/Web/HTTP"
-    },
-    82: {
-        "description": "XFER Utility",
-        "details": "File transfer utility. Implementation varies by system.",
-        "security": "MEDIUM RISK - File transfer service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    83: {
-        "description": "MIT ML Device",
-        "details": "MIT Machine Learning device protocol. Research/academic use.",
-        "security": "LOW RISK - Academic research protocol",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    84: {
-        "description": "Common Trace Facility",
-        "details": "System tracing and debugging facility.",
-        "security": "MEDIUM RISK - System debugging information",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    85: {
-        "description": "MIT ML Device (continued)",
-        "details": "MIT Machine Learning device protocol continuation.",
-        "security": "LOW RISK - Academic research protocol",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    87: {
-        "description": "Terminal Link",
-        "details": "Legacy terminal linking protocol. Rarely used today.",
-        "security": "LOW RISK - Legacy terminal service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    88: {
-        "description": "Kerberos Authentication",
-        "details": "Network authentication protocol using tickets and encryption.",
-        "security": "SECURE - Strong authentication protocol",
-        "link": "https://web.mit.edu/kerberos/"
-    },
-    89: {
-        "description": "SU-MIT Telnet Gateway",
-        "details": "Stanford University MIT Telnet gateway service.",
-        "security": "MEDIUM RISK - Telnet gateway service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    90: {
-        "description": "DNSIX Security Attribute Token Map",
-        "details": "Defense Intelligence Agency security token mapping.",
-        "security": "MEDIUM RISK - Security token service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    95: {
-        "description": "SUPDUP Protocol",
-        "details": "Stanford University Display Protocol for remote terminals.",
-        "security": "MEDIUM RISK - Remote terminal protocol",
-        "link": "https://en.wikipedia.org/wiki/SUPDUP"
-    },
-    98: {
-        "description": "Linuxconf",
-        "details": "Linux system configuration tool web interface.",
-        "security": "HIGH RISK - System configuration access",
-        "link": "https://en.wikipedia.org/wiki/Linuxconf"
-    },
-    99: {
-        "description": "WIP Message Protocol",
-        "details": "Wireless Internet Protocol message service.",
-        "security": "MEDIUM RISK - Wireless messaging service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    100: {
-        "description": "NEWACCT Account Creation",
-        "details": "Automated account creation service. Security risk if exposed.",
-        "security": "HIGH RISK - Account creation service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    
-    # Additional well-known ports (101-200)
-    101: {
-        "description": "NIC Host Name Server",
-        "details": "Network Information Center hostname resolution service.",
-        "security": "LOW RISK - Legacy naming service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    102: {
-        "description": "ISO-TSAP Protocol",
-        "details": "ISO Transport Service Access Point. Legacy networking protocol.",
-        "security": "LOW RISK - Legacy ISO protocol",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    103: {
-        "description": "Genesis Point-to-Point Trans Net",
-        "details": "Legacy networking protocol for point-to-point communication.",
-        "security": "LOW RISK - Legacy networking protocol",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    104: {
-        "description": "ACR-NEMA Digital Imaging",
-        "details": "Medical imaging communication protocol (predecessor to DICOM).",
-        "security": "MEDIUM RISK - Medical data transmission",
-        "link": "https://en.wikipedia.org/wiki/DICOM"
-    },
-    105: {
-        "description": "CCSO Nameserver (CSNet)",
-        "details": "Computer Science Network nameserver protocol.",
-        "security": "LOW RISK - Legacy nameserver",
-        "link": "https://en.wikipedia.org/wiki/CSNET"
-    },
-    106: {
-        "description": "3COM-TSMUX",
-        "details": "3COM terminal server multiplexer protocol.",
-        "security": "MEDIUM RISK - Terminal server access",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    107: {
-        "description": "Remote Telnet Service",
-        "details": "Remote telnet service with additional features.",
-        "security": "HIGH RISK - Remote terminal access",
-        "link": "https://en.wikipedia.org/wiki/Telnet"
-    },
-    108: {
-        "description": "SNA Gateway Access Server",
-        "details": "IBM Systems Network Architecture gateway service.",
-        "security": "MEDIUM RISK - Legacy IBM networking",
-        "link": "https://en.wikipedia.org/wiki/Systems_Network_Architecture"
-    },
-    109: {
-        "description": "POP2 - Post Office Protocol v2",
-        "details": "Legacy email retrieval protocol. Superseded by POP3.",
-        "security": "HIGH RISK - Legacy, unencrypted email protocol",
-        "link": "https://tools.ietf.org/html/rfc937"
-    },
-    110: {
-        "description": "POP3 - Post Office Protocol v3",
-        "details": "Email retrieval protocol. Downloads emails to client device.",
-        "security": "MEDIUM RISK - Can be secured with SSL/TLS",
-        "link": "https://tools.ietf.org/html/rfc1939"
-    },
-    111: {
-        "description": "RPC Portmapper - Remote Procedure Call",
-        "details": "Maps RPC program numbers to network ports. Used by NFS and other services.",
-        "security": "HIGH RISK - Can expose other services",
-        "link": "https://en.wikipedia.org/wiki/Open_Network_Computing_Remote_Procedure_Call"
-    },
-    112: {
-        "description": "McIDAS Data Transmission Protocol",
-        "details": "Meteorological data transmission for weather systems.",
-        "security": "LOW RISK - Weather data service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    113: {
-        "description": "Ident - User identification protocol",
-        "details": "Identifies the user of a TCP connection. Privacy and security concerns.",
-        "security": "MEDIUM RISK - User information disclosure",
-        "link": "https://tools.ietf.org/html/rfc1413"
-    },
-    115: {
-        "description": "SFTP - Simple File Transfer Protocol",
-        "details": "Legacy simple file transfer protocol (not SSH SFTP).",
-        "security": "MEDIUM RISK - Legacy file transfer",
-        "link": "https://tools.ietf.org/html/rfc913"
-    },
-    117: {
-        "description": "UUCP Path Service",
-        "details": "Unix-to-Unix Copy Protocol path information service.",
-        "security": "LOW RISK - Legacy Unix networking",
-        "link": "https://en.wikipedia.org/wiki/UUCP"
-    },
-    118: {
-        "description": "SQL Services",
-        "details": "Structured Query Language database services.",
-        "security": "HIGH RISK - Database access",
-        "link": "https://en.wikipedia.org/wiki/SQL"
-    },
-    119: {
-        "description": "NNTP - Network News Transfer Protocol",
-        "details": "Protocol for reading and posting Usenet news articles.",
-        "security": "MEDIUM RISK - News/forum service",
-        "link": "https://tools.ietf.org/html/rfc3977"
-    },
-    120: {
-        "description": "CFDPTKT - Configuration File Transfer",
-        "details": "Configuration file transfer protocol.",
-        "security": "MEDIUM RISK - Configuration transfer",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    121: {
-        "description": "ERPC - Encore RPC",
-        "details": "Encore Computer Corporation Remote Procedure Call.",
-        "security": "MEDIUM RISK - Legacy RPC service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    123: {
-        "description": "NTP - Network Time Protocol",
-        "details": "Synchronizes computer clocks across networks.",
-        "security": "LOW RISK - Time synchronization service",
-        "link": "https://www.ntp.org/"
-    },
-    125: {
-        "description": "LOCUS-MAP - Network Mapping",
-        "details": "LOCUS distributed system mapping protocol.",
-        "security": "MEDIUM RISK - Network topology information",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    129: {
-        "description": "PWDGEN Password Generator",
-        "details": "Password generation service. Security risk if exposed.",
-        "security": "HIGH RISK - Password generation service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    135: {
-        "description": "Microsoft RPC Endpoint Mapper",
-        "details": "Windows RPC service that maps RPC endpoints. Critical Windows service.",
-        "security": "HIGH RISK - Common attack target, restrict access",
-        "link": "https://docs.microsoft.com/en-us/windows/win32/rpc/rpc-start-page"
-    },
-    137: {
-        "description": "NetBIOS Name Service",
-        "details": "Windows NetBIOS name resolution service. Legacy networking.",
-        "security": "HIGH RISK - Legacy protocol, information disclosure",
-        "link": "https://en.wikipedia.org/wiki/NetBIOS"
-    },
-    138: {
-        "description": "NetBIOS Datagram Service",
-        "details": "Windows NetBIOS datagram distribution service.",
-        "security": "HIGH RISK - Legacy protocol, security issues",
-        "link": "https://en.wikipedia.org/wiki/NetBIOS"
-    },
-    139: {
-        "description": "NetBIOS Session Service - Windows networking",
-        "details": "Legacy Windows file sharing protocol. Part of SMB over NetBIOS.",
-        "security": "HIGH RISK - Legacy protocol, disable if possible",
-        "link": "https://en.wikipedia.org/wiki/NetBIOS"
-    },
-    143: {
-        "description": "IMAP - Internet Message Access Protocol",
-        "details": "Email access protocol that keeps emails on server. More advanced than POP3.",
-        "security": "MEDIUM RISK - Should use SSL/TLS (port 993)",
-        "link": "https://tools.ietf.org/html/rfc3501"
-    },
-    144: {
-        "description": "NewS - Network News System",
-        "details": "Network news distribution system.",
-        "security": "MEDIUM RISK - News distribution service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    145: {
-        "description": "UAAC Protocol",
-        "details": "Unix-to-Unix Copy Protocol with authentication.",
-        "security": "MEDIUM RISK - File transfer with authentication",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    146: {
-        "description": "ISO-IP0 - ISO Transport Protocol",
-        "details": "ISO transport protocol over IP networks.",
-        "security": "LOW RISK - Legacy ISO networking",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    150: {
-        "description": "NetBIOS Session Service (continued)",
-        "details": "Extended NetBIOS session service functionality.",
-        "security": "HIGH RISK - Legacy Windows networking",
-        "link": "https://en.wikipedia.org/wiki/NetBIOS"
-    },
-    152: {
-        "description": "Background File Transfer Program",
-        "details": "Background file transfer service for batch operations.",
-        "security": "MEDIUM RISK - File transfer service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    153: {
-        "description": "SGMP - Simple Gateway Monitoring Protocol",
-        "details": "Legacy network monitoring protocol. Superseded by SNMP.",
-        "security": "MEDIUM RISK - Network monitoring service",
-        "link": "https://tools.ietf.org/html/rfc1028"
-    },
-    156: {
-        "description": "SQL Service",
-        "details": "Database SQL service access.",
-        "security": "HIGH RISK - Database service access",
-        "link": "https://en.wikipedia.org/wiki/SQL"
-    },
-    158: {
-        "description": "DMSP - Distributed Mail System Protocol",
-        "details": "Distributed mail system communication protocol.",
-        "security": "MEDIUM RISK - Mail system service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    161: {
-        "description": "SNMP - Simple Network Management Protocol",
-        "details": "Network device monitoring and management. Often uses weak community strings.",
-        "security": "HIGH RISK - Often misconfigured, use SNMPv3",
-        "link": "https://www.paessler.com/snmp"
-    },
-    162: {
-        "description": "SNMP Trap",
-        "details": "SNMP trap receiver for network device notifications.",
-        "security": "MEDIUM RISK - Network monitoring notifications",
-        "link": "https://www.paessler.com/snmp"
-    },
-    163: {
-        "description": "CMIP-MAN - Network Management",
-        "details": "Common Management Information Protocol management.",
-        "security": "MEDIUM RISK - Network management service",
-        "link": "https://en.wikipedia.org/wiki/Common_Management_Information_Protocol"
-    },
-    164: {
-        "description": "CMIP-AGENT",
-        "details": "Common Management Information Protocol agent.",
-        "security": "MEDIUM RISK - Management agent service",
-        "link": "https://en.wikipedia.org/wiki/Common_Management_Information_Protocol"
-    },
-    174: {
-        "description": "MAILQ - Mail Queue",
-        "details": "Mail queue management service.",
-        "security": "MEDIUM RISK - Mail queue access",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    177: {
-        "description": "XDMCP - X Display Manager Control Protocol",
-        "details": "X Window System display manager protocol.",
-        "security": "HIGH RISK - Remote X11 access, often unencrypted",
-        "link": "https://en.wikipedia.org/wiki/X_Display_Manager_Control_Protocol"
-    },
-    178: {
-        "description": "NextStep Window Server",
-        "details": "NextStep operating system window server.",
-        "security": "MEDIUM RISK - GUI access service",
-        "link": "https://en.wikipedia.org/wiki/NeXTSTEP"
-    },
-    179: {
-        "description": "BGP - Border Gateway Protocol",
-        "details": "Internet routing protocol for exchanging routing information.",
-        "security": "HIGH RISK - Critical routing protocol, secure properly",
-        "link": "https://tools.ietf.org/html/rfc4271"
-    },
-    191: {
-        "description": "Prospero Directory Service",
-        "details": "Distributed directory service protocol.",
-        "security": "MEDIUM RISK - Directory service access",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    194: {
-        "description": "IRC - Internet Relay Chat",
-        "details": "Real-time chat protocol for group communication.",
-        "security": "MEDIUM RISK - Chat service, monitor for abuse",
-        "link": "https://tools.ietf.org/html/rfc1459"
-    },
-    199: {
-        "description": "SMUX - SNMP Multiplexer",
-        "details": "SNMP protocol multiplexer for network management.",
-        "security": "MEDIUM RISK - Network management multiplexer",
-        "link": "https://tools.ietf.org/html/rfc1227"
-    },
-    110: {
-        "description": "POP3 - Post Office Protocol v3",
-        "details": "Email retrieval protocol. Downloads emails to client device.",
-        "security": "MEDIUM RISK - Can be secured with SSL/TLS",
-        "link": "https://tools.ietf.org/html/rfc1939"
-    },
-    199: {
-        "description": "SMUX - SNMP Multiplexer",
-        "details": "SNMP protocol multiplexer for network management.",
-        "security": "MEDIUM RISK - Network management multiplexer",
-        "link": "https://tools.ietf.org/html/rfc1227"
-    },
-    
-    # Additional common ports (200-400)
-    201: {
-        "description": "AppleTalk Routing Maintenance",
-        "details": "Apple networking protocol routing maintenance.",
-        "security": "LOW RISK - Legacy Apple networking",
-        "link": "https://en.wikipedia.org/wiki/AppleTalk"
-    },
-    202: {
-        "description": "AppleTalk Name Binding",
-        "details": "Apple networking protocol name binding service.",
-        "security": "LOW RISK - Legacy Apple networking",
-        "link": "https://en.wikipedia.org/wiki/AppleTalk"
-    },
-    204: {
-        "description": "AppleTalk Echo",
-        "details": "Apple networking protocol echo service.",
-        "security": "LOW RISK - Legacy Apple networking",
-        "link": "https://en.wikipedia.org/wiki/AppleTalk"
-    },
-    206: {
-        "description": "AppleTalk Zone Information",
-        "details": "Apple networking protocol zone information service.",
-        "security": "LOW RISK - Legacy Apple networking",
-        "link": "https://en.wikipedia.org/wiki/AppleTalk"
-    },
-    209: {
-        "description": "Quick Mail Transfer Protocol",
-        "details": "Alternative mail transfer protocol.",
-        "security": "MEDIUM RISK - Mail transfer service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    210: {
-        "description": "ANSI Z39.50",
-        "details": "Information retrieval protocol for bibliographic databases.",
-        "security": "LOW RISK - Database query protocol",
-        "link": "https://en.wikipedia.org/wiki/Z39.50"
-    },
-    213: {
-        "description": "IPX - Internetwork Packet Exchange",
-        "details": "Novell NetWare networking protocol.",
-        "security": "MEDIUM RISK - Legacy Novell networking",
-        "link": "https://en.wikipedia.org/wiki/Internetwork_Packet_Exchange"
-    },
-    220: {
-        "description": "IMAP3 - Internet Message Access Protocol v3",
-        "details": "Legacy version of IMAP email protocol.",
-        "security": "MEDIUM RISK - Legacy email protocol",
-        "link": "https://tools.ietf.org/html/rfc1203"
-    },
-    245: {
-        "description": "LINK - Link Protocol",
-        "details": "Network link establishment protocol.",
-        "security": "MEDIUM RISK - Network link service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    347: {
-        "description": "Fatmen Server",
-        "details": "File and Tape Management system server.",
-        "security": "MEDIUM RISK - File management service",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    363: {
-        "description": "RSVP Tunnel",
-        "details": "Resource Reservation Protocol tunnel service.",
-        "security": "MEDIUM RISK - Quality of Service protocol",
-        "link": "https://tools.ietf.org/html/rfc2205"
-    },
-    389: {
-        "description": "LDAP - Lightweight Directory Access Protocol",
-        "details": "Directory service protocol for accessing user/computer information.",
-        "security": "MEDIUM RISK - Should use LDAPS (port 636)",
-        "link": "https://ldap.com/"
-    },
-    401: {
-        "description": "UPS Uninterruptible Power Supply",
-        "details": "Network UPS monitoring and management protocol.",
-        "security": "MEDIUM RISK - Infrastructure monitoring",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    },
-    427: {
-        "description": "SLP - Service Location Protocol",
-        "details": "Service discovery protocol for network services.",
-        "security": "MEDIUM RISK - Service discovery",
-        "link": "https://tools.ietf.org/html/rfc2608"
-    },
-    443: {
-        "description": "HTTPS - HTTP over SSL/TLS",
-        "details": "Secure web server communication with encrypted traffic.",
-        "security": "SECURE - Encrypted web traffic",
-        "link": "https://developer.mozilla.org/en-US/docs/Glossary/HTTPS"
-    },
-    444: {
-        "description": "SNPP - Simple Network Paging Protocol",
-        "details": "Protocol for sending pager messages over networks.",
-        "security": "MEDIUM RISK - Paging service",
-        "link": "https://tools.ietf.org/html/rfc1861"
-    },
-    445: {
-        "description": "Microsoft-DS - SMB file sharing",
-        "details": "Modern Windows file sharing protocol. Replaced NetBIOS SMB.",
-        "security": "HIGH RISK - Common ransomware target, secure properly",
-        "link": "https://docs.microsoft.com/en-us/windows-server/storage/file-server/file-server-smb-overview"
-    },
-    464: {
-        "description": "Kerberos Change/Set Password",
-        "details": "Kerberos protocol for changing user passwords.",
-        "security": "SECURE - Encrypted password change",
-        "link": "https://web.mit.edu/kerberos/"
-    },
-    465: {
-        "description": "SMTP over SSL - Secure email submission",
-        "details": "Encrypted email submission protocol. More secure than plain SMTP.",
-        "security": "SECURE - Encrypted email transmission",
-        "link": "https://tools.ietf.org/html/rfc8314"
-    },
-    500: {
-        "description": "ISAKMP - Internet Security Association",
-        "details": "IPSec key exchange and security association management.",
-        "security": "SECURE - VPN key exchange protocol",
-        "link": "https://tools.ietf.org/html/rfc2408"
-    },
-    512: {
-        "description": "Remote Process Execution (rexec)",
-        "details": "Remote command execution with authentication.",
-        "security": "HIGH RISK - Remote command execution",
-        "link": "https://en.wikipedia.org/wiki/Berkeley_r-commands"
-    },
-    513: {
-        "description": "Remote Login (rlogin)",
-        "details": "Remote login protocol similar to telnet but less secure.",
-        "security": "HIGH RISK - Unencrypted remote login",
-        "link": "https://en.wikipedia.org/wiki/Rlogin"
-    },
-    514: {
-        "description": "Remote Shell (rsh)",
-        "details": "Remote shell command execution without passwords.",
-        "security": "HIGH RISK - Unencrypted remote shell",
-        "link": "https://en.wikipedia.org/wiki/Remote_Shell"
-    },
-    515: {
-        "description": "Line Printer Daemon (LPD)",
-        "details": "Network printing protocol for Unix/Linux systems.",
-        "security": "MEDIUM RISK - Network printing service",
-        "link": "https://tools.ietf.org/html/rfc1179"
-    },
-    524: {
-        "description": "NCP - NetWare Core Protocol",
-        "details": "Novell NetWare file and print sharing protocol.",
-        "security": "MEDIUM RISK - Legacy Novell networking",
-        "link": "https://en.wikipedia.org/wiki/NetWare_Core_Protocol"
-    },
-    543: {
-        "description": "Klogin - Kerberized Login",
-        "details": "Kerberos-authenticated remote login service.",
-        "security": "SECURE - Kerberos-authenticated login",
-        "link": "https://web.mit.edu/kerberos/"
-    },
-    544: {
-        "description": "Kshell - Kerberized Shell",
-        "details": "Kerberos-authenticated remote shell service.",
-        "security": "SECURE - Kerberos-authenticated shell",
-        "link": "https://web.mit.edu/kerberos/"
-    },
-    548: {
-        "description": "AFP - Apple Filing Protocol",
-        "details": "Apple file sharing protocol for macOS systems.",
-        "security": "MEDIUM RISK - Apple file sharing",
-        "link": "https://en.wikipedia.org/wiki/Apple_Filing_Protocol"
-    },
-    554: {
-        "description": "RTSP - Real Time Streaming Protocol",
-        "details": "Multimedia streaming control protocol.",
-        "security": "MEDIUM RISK - Media streaming service",
-        "link": "https://tools.ietf.org/html/rfc2326"
-    },
-    563: {
-        "description": "SNEWS - Secure Network News",
-        "details": "Secure Network News Transfer Protocol over SSL/TLS.",
-        "security": "SECURE - Encrypted news transfer",
-        "link": "https://tools.ietf.org/html/rfc4642"
-    },
-    587: {
-        "description": "SMTP Submission - Email submission with STARTTLS",
-        "details": "Modern email submission port that supports encryption via STARTTLS.",
-        "security": "SECURE - Can be encrypted",
-        "link": "https://tools.ietf.org/html/rfc6409"
-    },
-    631: {
-        "description": "IPP - Internet Printing Protocol",
-        "details": "Network printing protocol used by CUPS and modern printers.",
-        "security": "LOW RISK - Printing service",
-        "link": "https://tools.ietf.org/html/rfc8011"
-    },
-    636: {
-        "description": "LDAPS - LDAP over SSL/TLS",
-        "details": "Secure LDAP directory service with encrypted communication.",
-        "security": "SECURE - Encrypted directory access",
-        "link": "https://ldap.com/ldap-over-ssl-tls-and-starttls/"
-    },
-    989: {
-        "description": "FTPS Data - FTP over SSL/TLS Data",
-        "details": "Secure FTP data channel with SSL/TLS encryption.",
-        "security": "SECURE - Encrypted file transfer data",
-        "link": "https://tools.ietf.org/html/rfc4217"
-    },
-    990: {
-        "description": "FTPS Control - FTP over SSL/TLS Control",
-        "details": "Secure FTP control channel with SSL/TLS encryption.",
-        "security": "SECURE - Encrypted file transfer control",
-        "link": "https://tools.ietf.org/html/rfc4217"
-    },
-    993: {
-        "description": "IMAPS - IMAP over SSL/TLS",
-        "details": "Secure IMAP email access with encrypted communication.",
-        "security": "SECURE - Encrypted email access",
-        "link": "https://tools.ietf.org/html/rfc8314"
-    },
-    995: {
-        "description": "POP3S - POP3 over SSL/TLS",
-        "details": "Secure POP3 email retrieval with encrypted communication.",
-        "security": "SECURE - Encrypted email retrieval",
-        "link": "https://tools.ietf.org/html/rfc8314"
-    },
-    1080: {
-        "description": "SOCKS Proxy",
-        "details": "SOCKS proxy protocol for network traffic routing.",
-        "security": "MEDIUM RISK - Proxy service, monitor usage",
-        "link": "https://tools.ietf.org/html/rfc1928"
-    },
-    1433: {
-        "description": "Microsoft SQL Server - Database server",
-        "details": "Microsoft SQL Server database engine. Contains sensitive business data.",
-        "security": "HIGH RISK - Database contains sensitive data",
-        "link": "https://docs.microsoft.com/en-us/sql/sql-server/"
-    },
-    1521: {
-        "description": "Oracle Database - TNS Listener",
-        "details": "Oracle database listener service. Handles database connections.",
-        "security": "HIGH RISK - Database access, secure properly",
-        "link": "https://docs.oracle.com/en/database/"
-    },
-    1723: {
-        "description": "PPTP - Point-to-Point Tunneling Protocol",
-        "details": "Legacy VPN protocol with known security vulnerabilities.",
-        "security": "HIGH RISK - Deprecated, use modern VPN protocols",
-        "link": "https://en.wikipedia.org/wiki/Point-to-Point_Tunneling_Protocol"
-    },
-    1900: {
-        "description": "UPnP - Universal Plug and Play",
-        "details": "Automatic device discovery and configuration. Often insecure.",
-        "security": "HIGH RISK - Can expose internal services",
-        "link": "https://en.wikipedia.org/wiki/Universal_Plug_and_Play"
-    },
-    2049: {
-        "description": "NFS - Network File System",
-        "details": "Unix/Linux network file sharing protocol.",
-        "security": "MEDIUM RISK - Secure with proper authentication",
-        "link": "https://en.wikipedia.org/wiki/Network_File_System"
-    },
-    2179: {
-        "description": "VMware SOAP API - Virtual machine management",
-        "details": "VMware vSphere management interface for virtual machines.",
-        "security": "HIGH RISK - Critical infrastructure access",
-        "link": "https://docs.vmware.com/en/VMware-vSphere/"
-    },
-    3306: {
-        "description": "MySQL Database Server",
-        "details": "Popular open-source database management system.",
-        "security": "HIGH RISK - Database contains sensitive data",
-        "link": "https://dev.mysql.com/doc/"
-    },
-    3389: {
-        "description": "Microsoft RDP - Remote Desktop Protocol",
-        "details": "Windows remote desktop access. Frequently targeted by attackers.",
-        "security": "HIGH RISK - Common attack target, secure with NLA",
-        "link": "https://docs.microsoft.com/en-us/troubleshoot/windows-server/remote/understanding-remote-desktop-protocol"
-    },
-    5357: {
-        "description": "WSDAPI - Web Services Discovery",
-        "details": "Windows service discovery protocol for network devices.",
-        "security": "LOW RISK - Device discovery service",
-        "link": "https://docs.microsoft.com/en-us/windows/win32/wsdapi/wsd-portal"
-    },
-    5432: {
-        "description": "PostgreSQL Database Server",
-        "details": "Advanced open-source relational database management system.",
-        "security": "HIGH RISK - Database contains sensitive data",
-        "link": "https://www.postgresql.org/docs/"
-    },
-    5900: {
-        "description": "VNC - Virtual Network Computing",
-        "details": "Remote desktop protocol. Often poorly secured by default.",
-        "security": "HIGH RISK - Often weak passwords, encrypt traffic",
-        "link": "https://en.wikipedia.org/wiki/Virtual_Network_Computing"
-    },
-    6379: {
-        "description": "Redis - In-memory data structure store",
-        "details": "Fast in-memory database, cache, and message broker.",
-        "security": "HIGH RISK - Often exposed without authentication",
-        "link": "https://redis.io/documentation"
-    },
-    8080: {
-        "description": "HTTP Alternate - Web cache/proxy server",
-        "details": "Alternative HTTP port often used by web applications and proxies.",
-        "security": "MEDIUM RISK - Unencrypted web traffic",
-        "link": "https://developer.mozilla.org/en-US/docs/Web/HTTP"
-    },
-    24800: {
-        "description": "Synergy - Screen and keyboard sharing",
-        "details": "Software for sharing mouse and keyboard between computers.",
-        "security": "MEDIUM RISK - Can intercept keystrokes",
-        "link": "https://symless.com/synergy"
-    }
-}
-
-def get_port_description(port):
-    """Get enhanced description for a given port number"""
-    port_info = PORT_DESCRIPTIONS.get(port)
-    if port_info:
-        if isinstance(port_info, dict):
-            return port_info["description"]
-        else:
-            return port_info  # Handle any legacy string entries
-    return f"Port {port} - Unknown/Custom application"
-
-def get_port_details(port):
-    """Get detailed information for a given port number"""
-    port_info = PORT_DESCRIPTIONS.get(port)
-    if port_info and isinstance(port_info, dict):
-        return port_info
-    return {
-        "description": f"Port {port} - Unknown/Custom application",
-        "details": "No detailed information available for this port.",
-        "security": "UNKNOWN",
-        "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
-    }
+# Import port descriptions database
+import sys
+import os
+sys.path.append(os.path.dirname(__file__))
+from port_descriptions import PORT_DESCRIPTIONS, get_port_description, get_port_security_level
 
 class CustomD3ForceGraph:
     """
@@ -972,18 +54,47 @@ class CustomD3ForceGraph:
             "color": color
         })
     
-    def generate_from_scan_results(self, scan_results: Dict[str, List[int]], share_results: Dict[str, List[str]] = None):
+    def generate_from_scan_results(self, scan_results: Dict[str, List[int]], share_results: Dict[str, List[str]] = None, host_details: Dict = None):
         """
         Generate graph data from port scan results.
         """
         share_results = share_results or {}
+        host_details = host_details or {}
         
         # Clear existing data
         self.nodes = []
         self.links = []
         
-        # Service mapping for individual ports
+        # Function to get OS-based colors
+        def get_os_color(host_key):
+            host_detail = host_details.get(host_key, {})
+            os_detection = host_detail.get('os_detection', {})
+            os_name = os_detection.get('os', '').lower()
+            
+            if 'windows' in os_name:
+                return "#0078D4"  # Microsoft Blue
+            elif 'linux' in os_name or 'unix' in os_name:
+                return "#FCC624"  # Linux Yellow/Orange
+            elif 'macos' in os_name or 'mac os' in os_name:
+                return "#9C27B0"  # Purple for macOS
+            elif 'embedded' in os_name or 'iot' in os_name:
+                return "#FF5722"  # Orange-Red for embedded/IoT
+            else:
+                return "#607D8B"  # Default Gray for Unknown/Other OS
+        
+        # Service mapping for individual ports - enhanced to use our comprehensive database
         def get_service_name(port):
+            # First try our comprehensive database
+            port_data = PORT_DESCRIPTIONS.get(port)
+            if port_data and isinstance(port_data, dict):
+                # Extract service name from description (get first part before " - ")
+                description = port_data.get('description', f'Port {port}')
+                service_name = description.split(" - ")[0] if " - " in description else description
+                # Clean up common patterns to make shorter labels
+                service_name = service_name.replace("Apple ", "").replace("Microsoft ", "MS ").replace("Windows ", "Win ")
+                return service_name
+            
+            # Fallback to hardcoded common services for very basic mapping
             service_map = {
                 21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
                 80: "HTTP", 110: "POP3", 111: "RPC", 135: "RPC", 139: "NetBIOS",
@@ -1022,12 +133,13 @@ class CustomD3ForceGraph:
         for host, ports in scan_results.items():
             # Determine if this is a hostname (contains IP-hostname format)
             is_hostname = '-' in host and any(char.isdigit() for char in host.split('-')[0])
-            
+            # Add host node with OS-based color
+            host_color = get_os_color(host)
             self.add_node(
                 node_id=host,
                 label=host,
                 group="host",
-                color="#4CAF50",  # Green for hosts
+                color=host_color,  # OS-based color
                 size=15
             )
             
@@ -1331,7 +443,7 @@ class CustomD3ForceGraph:
         <div class="controls">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <strong>🎮 Controls</strong>
-                <button onclick="toggleControls()" style="background: transparent; color: #FFFF00; border: 1px solid #FFFF00; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="controls-toggle">📚 Hide</button>
+                <button onclick="toggleControls()" style="background: #1a237e; color: white; border: 1px solid #3949ab; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="controls-toggle">📚 Hide</button>
             </div>
             <div id="controls-content">
                 <div>• Drag nodes to move them</div>
@@ -1348,6 +460,7 @@ class CustomD3ForceGraph:
                     • Alt+L: Toggle Legend
                 </div>
                 <button onclick="showScanData()" style="margin-top: 10px; background: #1a237e; color: white; border: 1px solid #FFFF00; padding: 5px; border-radius: 3px; cursor: pointer;">📄 Show Scan Data</button>
+                <button onclick="downloadCSV()" style="margin-top: 10px; margin-left: 5px; background: #388E3C; color: white; border: 1px solid #4CAF50; padding: 5px; border-radius: 3px; cursor: pointer;">📊 Download CSV</button>
                 <div style="margin-top: 10px;">
                     <button onclick="zoomToFit()" style="background: #2E7D32; color: white; border: 1px solid #4CAF50; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🔍 Fit All</button>
                     <button onclick="zoomReset()" style="background: #1976D2; color: white; border: 1px solid #2196F3; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🎯 Reset</button>
@@ -1360,7 +473,7 @@ class CustomD3ForceGraph:
         <div class="info-panel">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <strong>📊 Network Graph</strong>
-                <button onclick="toggleInfoPanel()" style="background: transparent; color: #FFFF00; border: 1px solid #FFFF00; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="info-toggle">📚 Hide</button>
+                <button onclick="toggleInfoPanel()" style="background: #1a237e; color: white; border: 1px solid #3949ab; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="info-toggle">📚 Hide</button>
             </div>
             <div id="info-content">
                 <div id="node-count">Nodes: {len(self.nodes)}</div>
@@ -1372,7 +485,7 @@ class CustomD3ForceGraph:
         <div class="legend">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <strong>🎯 Legend</strong>
-                <button onclick="toggleLegend()" style="background: transparent; color: #FFFF00; border: 1px solid #FFFF00; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="legend-toggle">📚 Hide</button>
+                <button onclick="toggleLegend()" style="background: #1a237e; color: white; border: 1px solid #3949ab; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="legend-toggle">📚 Hide</button>
             </div>
             <div id="legend-content">
                 <div class="legend-item">
@@ -1389,7 +502,7 @@ class CustomD3ForceGraph:
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #4CAF50;"></div>
-                    <span>Hosts</span>
+                    <span>Network Classes</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #F44336;"></div>
@@ -1407,9 +520,33 @@ class CustomD3ForceGraph:
                     <div class="legend-color" style="background: #B71C1C;"></div>
                     <span>Individual Shares (double-click to open)</span>
                 </div>
+                <hr style="border-color: #555; margin: 8px 0;">
+                <div style="font-weight: bold; margin-bottom: 5px; color: #fff;">🖥️ Host OS Detection</div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #0078D4;"></div>
+                    <span>Windows Systems</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #FCC624;"></div>
+                    <span>Linux/Unix Systems</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #9C27B0;"></div>
+                    <span>macOS Systems</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #FF5722;"></div>
+                    <span>Embedded/IoT Devices</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #607D8B;"></div>
+                    <span>Unknown/Other OS</span>
+                </div>
                 <div style="margin-top: 10px; font-size: 10px; color: #ccc;">
                     💡 Double-click share nodes to open in File Explorer<br>
-                    🔒 Red ports indicate high security risk
+                    🔒 Red ports indicate high security risk<br>
+                    🎯 Host colors indicate detected operating system<br>
+                    🔍 Enhanced detection uses 100+ port signatures
                 </div>
             </div>
         </div>
@@ -1519,12 +656,12 @@ class CustomD3ForceGraph:
             .style("stroke", "none")
             .style("pointer-events", "all"); // Ensure it captures click events
 
-        // Add white background circle for host icons
+        // Add background circle for host icons (colored by OS)
         hostNodeElements.append("circle")
             .attr("r", d => d.size * 1.1) // Slightly larger than the icon
-            .style("fill", "white")
-            .style("stroke", "#ccc")
-            .style("stroke-width", 1)
+            .style("fill", d => d.color || "#607D8B") // Use OS-based color
+            .style("stroke", "#fff")
+            .style("stroke-width", 2)
             .style("pointer-events", "none");
 
         // Add PNG icon for host nodes
@@ -1650,6 +787,10 @@ class CustomD3ForceGraph:
                 const portNumber = d.port || d.id.split("::")[1]; // Use direct port property or extract from ID
                 const portInfo = getPortDetails(parseInt(portNumber));
                 
+                // Extract host information from node ID (format: "host::port")
+                const hostPart = d.id.split("::")[0];
+                const hostIP = hostPart.split("-")[0]; // Extract IP from "IP-hostname" format
+                
                 const securityClass = portInfo.security.includes('HIGH RISK') ? 'high-risk' :
                                      portInfo.security.includes('SECURE') ? 'secure' : 'medium-risk';
                 
@@ -1660,7 +801,12 @@ class CustomD3ForceGraph:
                            `<strong>Security Assessment:</strong><br>` +
                            `<span class="${{securityClass}}" style="font-weight: bold;">${{portInfo.security}}</span><br><br>` +
                            `<strong>Learn More:</strong><br>` +
-                           `<a href="${{portInfo.link}}" target="_blank" rel="noopener" style="color: #4CAF50;">📖 Documentation</a>`;
+                           `<a href="${{portInfo.link}}" target="_blank" rel="noopener" style="color: #4CAF50;">📖 Documentation</a><br><br>` +
+                           `<strong>🌐 Quick Access Links:</strong><br>` +
+                           `<a href="http://${{hostIP}}:${{portNumber}}" target="_blank" rel="noopener" style="color: #2196F3; margin-right: 10px;">🔗 HTTP</a>` +
+                           `<a href="https://${{hostIP}}:${{portNumber}}" target="_blank" rel="noopener" style="color: #4CAF50;">🔒 HTTPS</a><br><br>` +
+                           `<strong>🌐 Network Access:</strong><br>` +
+                           `<span style="color: #FCC624; font-size: 11px;">💡 Try: telnet ${{hostIP}} ${{portNumber}} or nc ${{hostIP}} ${{portNumber}}</span>`;
             }}
             
             info.innerHTML = infoHtml;
@@ -1925,6 +1071,109 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
             }}
         }}
         
+        // CSV Download functionality
+        function downloadCSV() {{
+            if (!window.SCAN_DATA || !window.SCAN_DATA.scan_results) {{
+                alert('❌ No scan data available for CSV export.');
+                return;
+            }}
+            
+            const scanResults = window.SCAN_DATA.scan_results;
+            const shareResults = window.SCAN_DATA.share_results || {{}};
+            const hostDetails = window.SCAN_DATA.host_details || {{}};
+            const scanInfo = window.SCAN_DATA.scan_info;
+            
+            // Create CSV header
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Type,IP Address,Hostname,Port,Service,SMB Share,OS Detection,Response Time\\n";
+            
+            // Process each host from scan_results
+            Object.keys(scanResults).forEach(hostKey => {{
+                // Extract IP and hostname from the key (format: "192.168.1.1-hostname" or "192.168.1.1")
+                const parts = hostKey.split('-');
+                const ip = parts[0];
+                const hostname = parts.length > 1 ? parts.slice(1).join('-') : 'Unknown';
+                const ports = scanResults[hostKey];
+                const shares = shareResults[hostKey] || [];
+                
+                // Get actual OS detection and response time from host_details
+                const hostDetail = hostDetails[hostKey] || {{}};
+                const osDetection = hostDetail.os_detection || {{}};
+                const osInfo = osDetection.os ? `${{osDetection.os}} (${{osDetection.confidence || 'Unknown'}} confidence)` : 'Not Available';
+                const avgResponseTime = hostDetail.avg_response_time !== undefined ? 
+                    `${{(hostDetail.avg_response_time * 1000).toFixed(3)}}ms` : 'N/A';
+                
+                // Escape commas in data fields
+                const escapeCsv = (field) => {{
+                    if (typeof field === 'string' && field.includes(',')) {{
+                        return `"${{field.replace(/"/g, '""')}}"`;
+                    }}
+                    return field;
+                }};
+                
+                // Create separate rows for ports and shares
+                
+                // Add rows for open ports
+                if (ports && ports.length > 0) {{
+                    ports.forEach(port => {{
+                        // Look up service name from port descriptions
+                        const portInfo = portDescriptions[port];
+                        const service = portInfo ? portInfo.description : `Port ${{port}}`;
+                        
+                        // Get individual port response time if available from host_details
+                        let portResponseTime = avgResponseTime; // fallback to average
+                        if (hostDetail.open_ports && Array.isArray(hostDetail.open_ports)) {{
+                            const portData = hostDetail.open_ports.find(p => p.port === port);
+                            if (portData && portData.response_time !== undefined) {{
+                                portResponseTime = `${{(portData.response_time * 1000).toFixed(3)}}ms`;
+                            }}
+                        }}
+                        
+                        csvContent += `Port,${{escapeCsv(ip)}},${{escapeCsv(hostname)}},${{port}},${{escapeCsv(service)}},,${{escapeCsv(osInfo)}},${{portResponseTime}}\\n`;
+                    }});
+                }}
+                
+                // Add rows for SMB shares
+                if (shares && shares.length > 0) {{
+                    shares.forEach(share => {{
+                        csvContent += `Share,${{escapeCsv(ip)}},${{escapeCsv(hostname)}},,,${{escapeCsv(share)}},${{escapeCsv(osInfo)}},${{avgResponseTime}}\\n`;
+                    }});
+                }}
+                
+                // If host has neither ports nor shares (shouldn't happen but handle gracefully)
+                if ((!ports || ports.length === 0) && (!shares || shares.length === 0)) {{
+                    csvContent += `Host,${{escapeCsv(ip)}},${{escapeCsv(hostname)}},,,,,${{escapeCsv(osInfo)}},${{avgResponseTime}}\\n`;
+                }}
+            }});
+            
+            // Add scan metadata at the end
+            csvContent += "\\n# Scan Metadata\\n";
+            csvContent += `# Target: ${{scanInfo.target}}\\n`;
+            csvContent += `# Scan Time: ${{scanInfo.scan_time || 'Unknown'}}\\n`;
+            csvContent += `# Total Hosts: ${{Object.keys(scanResults).length}}\\n`;
+            csvContent += `# Ports Scanned: ${{scanInfo.ports_scanned || 'Unknown'}}\\n`;
+            csvContent += `# Hostname Resolution: ${{scanInfo.hostname_resolution ? 'Enabled' : 'Disabled'}}\\n`;
+            csvContent += `# Share Enumeration: ${{scanInfo.share_enumeration ? 'Enabled' : 'Disabled'}}\\n`;
+            
+            // Create and trigger download
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            
+            // Generate filename with timestamp
+            const now = new Date();
+            const timestamp = now.toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' + 
+                            now.toTimeString().split(' ')[0].replace(/:/g, '');
+            link.setAttribute("download", `network_scan_${{timestamp}}.csv`);
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            console.log('📊 CSV export completed successfully');
+        }}
+        
         // Add keyboard shortcuts for quick panel toggling
         document.addEventListener('keydown', function(event) {{
             if (event.altKey) {{
@@ -1982,12 +1231,12 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
         
         return filepath
 
-def create_custom_graph_from_scan(scan_results: Dict[str, List[int]], share_results: Dict[str, List[str]] = None):
+def create_custom_graph_from_scan(scan_results: Dict[str, List[int]], share_results: Dict[str, List[str]] = None, host_details: Dict = None):
     """
     Helper function to create a custom D3 graph from scan results.
     """
     graph = CustomD3ForceGraph()
-    graph.generate_from_scan_results(scan_results, share_results)
+    graph.generate_from_scan_results(scan_results, share_results, host_details)
     return graph
 
 # Example usage

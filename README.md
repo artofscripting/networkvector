@@ -17,12 +17,16 @@ Network Vector is a powerful, Python-based network scanning tool that performs c
 ## ✨ Features
 
 ### 🚀 Core Capabilities
-- **Raw TCP Port Scanning** - Scans 998 unique ports without external dependencies
+- **Raw TCP Port Scanning** - Scans 750 unique ports without external dependencies
 - **Multi-threaded Performance** - Up to 1000 concurrent threads for fast scanning
+- **Randomized Scanning** - Randomizes IP and port scan order to evade detection patterns
+- **Stealth Mode** - Optional random delays between hosts for IDS evasion
 - **Network Topology Discovery** - Automatic CIDR-based network hierarchy visualization
 - **Interactive D3.js Graphs** - Professional force-directed network visualizations
 - **SMB Share Enumeration** - Cross-platform Windows/Linux share discovery
 - **Hostname Resolution** - Automatic reverse DNS lookup for discovered hosts
+- **Comprehensive OS Detection** - Advanced fingerprinting using 100+ port signatures
+- **Host Categorization** - Visual host coloring based on detected operating systems
 
 ### 🎨 Visualization Features
 - **Professional Network Icons** - SVG-based network topology representation
@@ -30,9 +34,11 @@ Network Vector is a powerful, Python-based network scanning tool that performs c
 - **Color-coded Security** - Risk-based port classification (red=dangerous, blue=safe)
 - **Interactive Port Information** - Double-click ports for detailed descriptions and security assessments
 - **Sticky Node Behavior** - Drag-and-drop node positioning with persistence
+- **Collapsible UI Panels** - Hide/show Controls, Info Panel, and Legend to maximize graph space
 - **Collapse/Expand** - Right-click network nodes to manage complexity
 - **Self-contained Output** - HTML files with embedded assets, no external dependencies
 - **Embedded Scan Data** - Complete scan results embedded in HTML with "Show Scan Data" button
+- **CSV Data Export** - Download comprehensive scan data as CSV for analysis in Excel/databases
 
 ### 🔍 Port Intelligence
 - **Comprehensive Database** - Detailed information for 130+ common services
@@ -124,14 +130,23 @@ python src/nvector.py 192.168.1.0/24 --resolve-hostnames --enumerate-shares
 # Reduce threads for stealth scanning
 python src/nvector.py 192.168.1.0/24 --threads 50
 
+# Stealth mode with randomized scanning and delays
+python src/nvector.py 192.168.1.0/24 --scan-delay 1.0 --threads 50
+
+# Disable randomization for fastest scanning
+python src/nvector.py 192.168.1.0/24 --no-randomize
+
 # Custom port range
 python src/nvector.py 192.168.1.1 --ports 22 80 443 3389 5432
 
 # Custom timeout for slow networks
 python src/nvector.py 192.168.1.0/24 --timeout 2.0
 
+# Maximum stealth scanning
+python src/nvector.py 192.168.1.0/24 --scan-delay 2.0 --threads 20 --timeout 1.5
+
 # Maximum performance with executable
-./nvector.exe 192.168.1.0/24 --threads 1000
+./nvector.exe 192.168.1.0/24 --threads 1000 --no-randomize
 ```
 
 ### Output Options
@@ -150,18 +165,65 @@ python src/nvector.py 192.168.1.0/24 --no-resolve-hostnames --no-enumerate-share
 | `target` | IP address or network (e.g., 192.168.1.1 or 192.168.1.0/24) | Required |
 | `--timeout` | Connection timeout in seconds | 0.5 |
 | `--threads` | Maximum number of scanning threads | 1000 |
-| `--ports` | Custom ports to scan | 998 common ports |
+| `--ports` | Custom ports to scan | 750 common ports |
 | `--no-graph` | Skip D3.js visualization generation | Enabled |
 | `--no-resolve-hostnames` | Disable reverse DNS lookup | Enabled |
 | `--no-enumerate-shares` | Disable SMB share enumeration | Enabled |
+| `--no-randomize` | Disable randomized scanning order | Randomization enabled |
+| `--scan-delay` | Max random delay between hosts (seconds) for stealth | 0.0 |
 
-## 📊 Output Format
+## �️ Stealth Scanning & Evasion
+
+Network Vector includes advanced stealth features to evade network security detection:
+
+### 🎲 Randomized Scanning (Default)
+```bash
+# Default behavior - randomizes host and port order
+python src/nvector.py 192.168.1.0/24
+
+# Disable randomization for fastest performance
+python src/nvector.py 192.168.1.0/24 --no-randomize
+```
+
+**Benefits:**
+- ✅ Evades predictable scan pattern detection
+- ✅ Reduces IDS/IPS signature matching
+- ✅ Makes traffic analysis more difficult
+- ✅ No performance impact on scan speed
+
+### ⏱️ Stealth Mode with Timing Delays
+```bash
+# Add random delays up to 1 second between hosts
+python src/nvector.py 192.168.1.0/24 --scan-delay 1.0
+
+# Maximum stealth configuration
+python src/nvector.py 192.168.1.0/24 --scan-delay 2.0 --threads 20 --timeout 1.5
+```
+
+**Stealth Features:**
+- 🎯 **Random Host Order** - Scans hosts in unpredictable sequence
+- 🎲 **Random Port Order** - Randomizes port scanning sequence per host
+- ⏰ **Variable Timing** - Random delays between hosts (0 to `--scan-delay` seconds)
+- 🔄 **Thread Limiting** - Reduces concurrent connections for lower footprint
+
+### 🛡️ Detection Evasion Strategies
+
+| Technique | Purpose | Command Example |
+|-----------|---------|-----------------|
+| **Randomized Order** | Avoid pattern detection | `--scan-delay 0.0` (default) |
+| **Slow Scanning** | Evade rate-based detection | `--scan-delay 2.0 --threads 50` |
+| **Low Profile** | Minimize concurrent connections | `--threads 10 --timeout 2.0` |
+| **Targeted Scanning** | Reduce noise with specific ports | `--ports 80 443 22` |
+
+## �📊 Output Format
 
 ### Interactive HTML Visualization
 Network Vector generates a single, self-contained HTML file with:
 - **Force-directed network graph** with D3.js v7
 - **Professional network topology** representation with SVG icons
 - **Interactive port information** with security details for 130+ ports
+- **Collapsible UI controls** - Hide/show panels with keyboard shortcuts (Alt+C, Alt+I, Alt+L)
+- **CSV data export** - Download complete scan data for spreadsheet analysis
 - **Embedded scan data** - complete analysis data built into the HTML file
 - **Show Scan Data button** - view raw scan results without separate JSON files
 - **Responsive design** for desktop and mobile viewing
@@ -174,6 +236,14 @@ Network Vector generates a single, self-contained HTML file with:
 - **Double-click port details** with security assessments
 - **Color-coded risk levels** (red for dangerous, blue for safe ports)
 - **Network hierarchy visualization** with CIDR-based topology
+- **CSV data export** - Complete scan data export with:
+  - Separate rows for ports and SMB shares (no mixing)
+  - Host details (IP, hostname, response times)
+  - Port information (port number, service name) in dedicated rows
+  - SMB shares in their own dedicated rows
+  - OS detection results
+  - Scan metadata and configuration
+  - Timestamped filenames for historical analysis
 
 ## 🔧 Technical Details
 

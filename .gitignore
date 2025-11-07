@@ -52,12 +52,16 @@ Thumbs.db
 
 # Project specific
 network_scan*.html
+*.html
+*.csv
+network_scan*.csv
 *.log
 
 # Temporary files
 temp_*
 test_*
 *_temp.*
+showcase_*.py
 
 # Build artifacts
 nvector.exe

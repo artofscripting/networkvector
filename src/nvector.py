@@ -14,6 +14,7 @@ import json
 import argparse
 import subprocess
 import platform
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 
@@ -107,12 +108,15 @@ class SMBShareEnumerator:
         return []
 
 class RawPortScanner:
-    def __init__(self, timeout=1.0, max_threads=1000, resolve_hostnames=False, enumerate_shares=False):
+    def __init__(self, timeout=1.0, max_threads=1000, resolve_hostnames=False, enumerate_shares=False, randomize_scan=True, scan_delay=0.0):
         self.timeout = timeout
         self.max_threads = max_threads
         self.resolve_hostnames = resolve_hostnames
         self.enumerate_shares = enumerate_shares
+        self.randomize_scan = randomize_scan
+        self.scan_delay = scan_delay
         self.scan_results = defaultdict(list)
+        self.host_details = {}  # Store detailed host information
         self.share_results = defaultdict(list) if enumerate_shares else None
         self.smb_enumerator = SMBShareEnumerator() if enumerate_shares else None
         self.hostname_cache = {}
@@ -137,16 +141,22 @@ class RawPortScanner:
             return ip
     
     def scan_port(self, host, port):
-        """Scan a single port on a host"""
+        """Scan a single port on a host and return (is_open, response_time)"""
         try:
+            start_time = time.time()
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(self.timeout)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             result = sock.connect_ex((host, port))
+            response_time = time.time() - start_time
             sock.close()
-            return result == 0
+            
+            if result == 0:
+                return True, response_time
+            else:
+                return False, None
         except socket.error:
-            return False
+            return False, None
     
     def scan_host(self, host_ip, ports):
         """Scan all ports on a single host"""
@@ -156,23 +166,42 @@ class RawPortScanner:
         else:
             host_display = host_ip
         
-        #print(f"Scanning {host_display}... ({len(ports)} ports)")
+        # Randomize port order for stealth scanning (if enabled)
+        if self.randomize_scan:
+            randomized_ports = ports.copy()
+            random.shuffle(randomized_ports)
+            # Add small random delay between hosts for stealth
+            if self.scan_delay > 0:
+                delay = random.uniform(0, self.scan_delay)
+                time.sleep(delay)
+        else:
+            randomized_ports = ports
+        
+        #print(f"Scanning {host_display}... ({len(randomized_ports)} ports)")
         
         open_ports = []
         file_service_ports = []
+        response_times = []
+        port_info = {}  # Store detailed port information
         
         # Scan all ports with optimized threading
-        with ThreadPoolExecutor(max_workers=min(self.max_threads, len(ports))) as executor:
-            future_to_port = {executor.submit(self.scan_port, host_ip, port): port for port in ports}
+        with ThreadPoolExecutor(max_workers=min(self.max_threads, len(randomized_ports))) as executor:
+            future_to_port = {executor.submit(self.scan_port, host_ip, port): port for port in randomized_ports}
             
             completed = 0
             for future in as_completed(future_to_port):
                 port = future_to_port[future]
                 completed += 1
                 try:
-                    if future.result():
+                    is_open, response_time = future.result()
+                    if is_open:
                         open_ports.append(port)
-                        print(f"  {host_display}:{port} - OPEN")
+                        port_info[port] = {
+                            'state': 'open',
+                            'response_time': response_time
+                        }
+                        response_times.append(response_time)
+                        print(f"  {host_display}:{port} - OPEN ({response_time:.3f}s)")
                         
                         # Check if this is a file service port
                         if port in [445, 139, 2049]:  # SMB and NFS ports
@@ -183,10 +212,23 @@ class RawPortScanner:
                 
                 # Show progress every 25 ports
                 #if completed % 25 == 0:
-                    #print(f"  Progress: {completed}/{len(ports)} ports scanned...")
+                    #print(f"  Progress: {completed}/{len(randomized_ports)} ports scanned...")
         
         if open_ports:
             self.scan_results[host_display] = sorted(open_ports)
+            
+            # Calculate average response time for the host
+            avg_response_time = sum(response_times) / len(response_times) if response_times else 0
+            
+            # Store detailed host information
+            self.host_details[host_display] = {
+                'ip': host_ip,
+                'hostname': host_display.split('-', 1)[1] if '-' in host_display else None,
+                'open_ports': [{'port': port, 'response_time': port_info[port]['response_time']} for port in open_ports],
+                'avg_response_time': avg_response_time,
+                'os_detection': self.detect_os(open_ports),
+                'port_count': len(open_ports)
+            }
             
             # Enumerate SMB shares if file services detected
             if self.enumerate_shares and file_service_ports and self.smb_enumerator:
@@ -198,6 +240,215 @@ class RawPortScanner:
                     self.share_results[host_display] = shares
                     print(f"  Found shares: {shares}")
    
+    def detect_os(self, open_ports):
+        """Enhanced OS detection based on comprehensive port patterns and signatures"""
+        if not open_ports:
+            return {'os': 'Unknown', 'confidence': 'Low', 'details': 'No open ports detected'}
+        
+        # Initialize scoring systems
+        windows_score = 0
+        linux_score = 0
+        macos_score = 0
+        embedded_score = 0
+        
+        detected_services = []
+        
+        # Windows-specific port signatures (high confidence indicators)
+        windows_signatures = {
+            135: {'score': 4, 'service': 'RPC Endpoint Mapper'},
+            139: {'score': 3, 'service': 'NetBIOS Session Service'},
+            445: {'score': 3, 'service': 'Microsoft-DS (SMB)'},
+            3389: {'score': 5, 'service': 'Remote Desktop Protocol'},
+            1433: {'score': 3, 'service': 'MS SQL Server'},
+            1434: {'score': 3, 'service': 'MS SQL Monitor'},
+            5357: {'score': 4, 'service': 'Windows Service Discovery'},
+            5985: {'score': 4, 'service': 'WinRM HTTP'},
+            5986: {'score': 4, 'service': 'WinRM HTTPS'},
+            593: {'score': 3, 'service': 'HTTP RPC Ep Map'},
+            49152: {'score': 2, 'service': 'Windows Dynamic RPC'},
+            49153: {'score': 2, 'service': 'Windows Dynamic RPC'},
+            49154: {'score': 2, 'service': 'Windows Dynamic RPC'},
+            49155: {'score': 2, 'service': 'Windows Dynamic RPC'},
+            1024: {'score': 2, 'service': 'Windows Reserved'},
+            1025: {'score': 2, 'service': 'Windows NFS or IIS'},
+            1026: {'score': 2, 'service': 'Windows Calendar'},
+            1027: {'score': 2, 'service': 'Windows ICQ'},
+            8080: {'score': 1, 'service': 'Windows IIS Alt HTTP'},
+        }
+        
+        # Linux/Unix-specific port signatures
+        linux_signatures = {
+            22: {'score': 3, 'service': 'SSH (OpenSSH)'},
+            111: {'score': 3, 'service': 'RPC Portmapper'},
+            2049: {'score': 4, 'service': 'Network File System'},
+            514: {'score': 3, 'service': 'Remote Shell (rsh)'},
+            515: {'score': 3, 'service': 'Line Printer Daemon'},
+            993: {'score': 2, 'service': 'IMAPS (Linux bias)'},
+            995: {'score': 2, 'service': 'POP3S (Linux bias)'},
+            6000: {'score': 3, 'service': 'X11 Display'},
+            6001: {'score': 3, 'service': 'X11 Display'},
+            6002: {'score': 3, 'service': 'X11 Display'},
+            7000: {'score': 2, 'service': 'X11 Font Server'},
+            10000: {'score': 3, 'service': 'Webmin (Linux admin)'},
+            20000: {'score': 2, 'service': 'DNP (Linux)'},
+        }
+        
+        # macOS-specific signatures
+        macos_signatures = {
+            548: {'score': 4, 'service': 'AFP (Apple Filing Protocol)'},
+            631: {'score': 3, 'service': 'CUPS (macOS printing)'},
+            5009: {'score': 4, 'service': 'AirPort Admin Utility'},
+            5353: {'score': 2, 'service': 'Bonjour/mDNS'},
+            62078: {'score': 4, 'service': 'Apple iPhoto sharing'},
+            3283: {'score': 3, 'service': 'Apple NetAssistant'},
+            5222: {'score': 2, 'service': 'Apple iChat'},
+        }
+        
+        # Embedded/IoT device signatures
+        embedded_signatures = {
+            81: {'score': 3, 'service': 'Embedded Web Interface'},
+            82: {'score': 3, 'service': 'Embedded Web Interface'},
+            8008: {'score': 3, 'service': 'Embedded HTTP Alt'},
+            9999: {'score': 3, 'service': 'Embedded Telnet'},
+            4444: {'score': 3, 'service': 'Embedded Admin'},
+            8888: {'score': 3, 'service': 'Embedded Web Admin'},
+            9000: {'score': 2, 'service': 'Embedded Management'},
+            10001: {'score': 3, 'service': 'Embedded Control'},
+        }
+        
+        # Platform-neutral but commonly found services with OS bias
+        database_services = {
+            3306: {'windows': 1, 'linux': 2, 'service': 'MySQL'},
+            5432: {'windows': 1, 'linux': 3, 'service': 'PostgreSQL'},
+            1521: {'windows': 2, 'linux': 2, 'service': 'Oracle DB'},
+            27017: {'windows': 1, 'linux': 2, 'service': 'MongoDB'},
+            6379: {'windows': 1, 'linux': 2, 'service': 'Redis'},
+        }
+        
+        web_services = {
+            80: {'windows': 1, 'linux': 2, 'service': 'HTTP'},
+            443: {'windows': 1, 'linux': 2, 'service': 'HTTPS'},
+            8080: {'windows': 2, 'linux': 1, 'service': 'HTTP Alt'},
+            8443: {'windows': 1, 'linux': 2, 'service': 'HTTPS Alt'},
+            9080: {'windows': 1, 'linux': 2, 'service': 'HTTP Management'},
+            9443: {'windows': 1, 'linux': 2, 'service': 'HTTPS Management'},
+        }
+        
+        # Score based on specific OS signatures
+        for port in open_ports:
+            if port in windows_signatures:
+                score = windows_signatures[port]['score']
+                windows_score += score
+                detected_services.append(f"Windows: {windows_signatures[port]['service']}")
+            
+            if port in linux_signatures:
+                score = linux_signatures[port]['score']
+                linux_score += score
+                detected_services.append(f"Linux: {linux_signatures[port]['service']}")
+            
+            if port in macos_signatures:
+                score = macos_signatures[port]['score']
+                macos_score += score
+                detected_services.append(f"macOS: {macos_signatures[port]['service']}")
+            
+            if port in embedded_signatures:
+                score = embedded_signatures[port]['score']
+                embedded_score += score
+                detected_services.append(f"Embedded: {embedded_signatures[port]['service']}")
+            
+            # Add database service bias
+            if port in database_services:
+                windows_score += database_services[port].get('windows', 0)
+                linux_score += database_services[port].get('linux', 0)
+                detected_services.append(f"Database: {database_services[port]['service']}")
+            
+            # Add web service bias
+            if port in web_services:
+                windows_score += web_services[port].get('windows', 0)
+                linux_score += web_services[port].get('linux', 0)
+                detected_services.append(f"Web: {web_services[port]['service']}")
+        
+        # Advanced pattern analysis
+        port_combinations = {
+            # Windows combinations
+            (135, 139, 445): {'os': 'Windows', 'bonus': 5, 'desc': 'Classic Windows file sharing stack'},
+            (135, 445, 3389): {'os': 'Windows', 'bonus': 6, 'desc': 'Windows with Remote Desktop'},
+            (139, 445): {'os': 'Windows', 'bonus': 3, 'desc': 'SMB file sharing'},
+            (1433, 1434): {'os': 'Windows', 'bonus': 4, 'desc': 'MS SQL Server setup'},
+            
+            # Linux combinations  
+            (22, 111, 2049): {'os': 'Linux', 'bonus': 5, 'desc': 'Linux NFS server'},
+            (22, 80, 443): {'os': 'Linux', 'bonus': 3, 'desc': 'Linux web server'},
+            (22, 3306): {'os': 'Linux', 'bonus': 3, 'desc': 'Linux MySQL server'},
+            (22, 5432): {'os': 'Linux', 'bonus': 3, 'desc': 'Linux PostgreSQL server'},
+            
+            # macOS combinations
+            (548, 631): {'os': 'macOS', 'bonus': 4, 'desc': 'macOS file and print sharing'},
+            (22, 548): {'os': 'macOS', 'bonus': 3, 'desc': 'macOS with SSH and AFP'},
+        }
+        
+        # Check for port combinations
+        combination_bonuses = []
+        for combo, info in port_combinations.items():
+            if all(port in open_ports for port in combo):
+                if info['os'] == 'Windows':
+                    windows_score += info['bonus']
+                elif info['os'] == 'Linux':
+                    linux_score += info['bonus']
+                elif info['os'] == 'macOS':
+                    macos_score += info['bonus']
+                combination_bonuses.append(info['desc'])
+        
+        # Determine final OS with enhanced logic
+        max_score = max(windows_score, linux_score, macos_score, embedded_score)
+        
+        if max_score == 0:
+            return {
+                'os': 'Unknown', 
+                'confidence': 'Low', 
+                'details': f'No distinctive OS patterns found. Ports: {sorted(open_ports)}'
+            }
+        
+        # Determine OS and confidence
+        if windows_score == max_score and windows_score > 0:
+            confidence = 'High' if windows_score >= 6 else 'Medium' if windows_score >= 3 else 'Low'
+            os_name = 'Windows Server' if any(p in [1433, 1434, 5985, 5986] for p in open_ports) else 'Windows'
+            details = f'Score: {windows_score}, Services: {len([s for s in detected_services if "Windows" in s])}'
+        elif linux_score == max_score and linux_score > 0:
+            confidence = 'High' if linux_score >= 5 else 'Medium' if linux_score >= 3 else 'Low'
+            os_name = 'Linux/Unix'
+            details = f'Score: {linux_score}, Services: {len([s for s in detected_services if "Linux" in s])}'
+        elif macos_score == max_score and macos_score > 0:
+            confidence = 'High' if macos_score >= 4 else 'Medium' if macos_score >= 2 else 'Low'
+            os_name = 'macOS'
+            details = f'Score: {macos_score}, Services: {len([s for s in detected_services if "macOS" in s])}'
+        elif embedded_score == max_score and embedded_score > 0:
+            confidence = 'Medium' if embedded_score >= 3 else 'Low'
+            os_name = 'Embedded/IoT'
+            details = f'Score: {embedded_score}, Embedded services detected'
+        else:
+            return {
+                'os': 'Unknown', 
+                'confidence': 'Low', 
+                'details': f'Conflicting indicators. W:{windows_score} L:{linux_score} M:{macos_score} E:{embedded_score}'
+            }
+        
+        # Add combination bonus details
+        if combination_bonuses:
+            details += f', Patterns: {", ".join(combination_bonuses[:2])}'
+        
+        return {
+            'os': os_name,
+            'confidence': confidence, 
+            'details': details,
+            'detected_services': detected_services[:5],  # Top 5 services
+            'port_analysis': {
+                'windows_score': windows_score,
+                'linux_score': linux_score, 
+                'macos_score': macos_score,
+                'embedded_score': embedded_score
+            }
+        }
     
     def scan_network(self, target, ports=None):
         """Scan a network or single host"""
@@ -205,6 +456,7 @@ class RawPortScanner:
             ports = TOP_750_PORTS
         
         start_time = time.time()
+        self.host_details.clear()  # Clear previous scan data
         
         # Parse target
         try:
@@ -220,7 +472,15 @@ class RawPortScanner:
             # Single IP address
             hosts = [target]
         
-        print(f"Starting scan of {len(hosts)} hosts with {len(ports)} ports each...")
+        # Randomize host order for stealth scanning (if enabled)
+        if self.randomize_scan:
+            random.shuffle(hosts)
+            print(f"Starting randomized scan of {len(hosts)} hosts with {len(ports)} ports each...")
+            print("Note: Scanning hosts and ports in random order to avoid detection patterns")
+            if self.scan_delay > 0:
+                print(f"Note: Using random delays up to {self.scan_delay}s between hosts for stealth")
+        else:
+            print(f"Starting sequential scan of {len(hosts)} hosts with {len(ports)} ports each...")
         
         # Scan hosts in parallel - increased parallelism for faster scanning
         max_host_workers = min(50, len(hosts)) if len(hosts) > 10 else len(hosts)
@@ -235,7 +495,20 @@ class RawPortScanner:
         
         end_time = time.time()
         print(f"\nScan completed in {end_time - start_time:.2f} seconds")
-        return self.scan_results
+        print(f"Found {len(self.scan_results)} open ports across {len(self.host_details)} hosts.")
+        
+        # Print OS detection results
+        for host_ip, host_info in self.host_details.items():
+            if host_info['open_ports']:  # Only print for hosts with open ports
+                os_info = host_info.get('os_detection', {'os': 'Unknown', 'confidence': 'Low'})
+                print(f"Host {host_ip}: OS Detection - {os_info['os']} ({os_info['confidence']} confidence)")
+        
+        # Return comprehensive results including host details
+        return {
+            'scan_results': self.scan_results,
+            'share_results': self.share_results,
+            'host_details': self.host_details
+        }
 
 def main():
     parser = argparse.ArgumentParser(description='Network Vector - Advanced Network Topology Scanner')
@@ -246,6 +519,8 @@ def main():
     parser.add_argument('--no-graph', action='store_true', help='Skip graph visualization')
     parser.add_argument('--no-resolve-hostnames', action='store_true', help='Disable hostname resolution (enabled by default)')
     parser.add_argument('--no-enumerate-shares', action='store_true', help='Disable SMB share enumeration (enabled by default)')
+    parser.add_argument('--no-randomize', action='store_true', help='Disable randomized scanning order (randomization enabled by default)')
+    parser.add_argument('--scan-delay', type=float, default=0.0, help='Maximum random delay between host scans in seconds for stealth (default: 0.0)')
     
     args = parser.parse_args()
     
@@ -260,6 +535,9 @@ def main():
     print(f"Max Threads: {args.threads}")
     print(f"Hostname Resolution: {'Enabled' if not args.no_resolve_hostnames else 'Disabled'}")
     print(f"Share Enumeration: {'Enabled' if not args.no_enumerate_shares else 'Disabled'}")
+    print(f"Randomized Scanning: {'Enabled' if not args.no_randomize else 'Disabled'}")
+    if args.scan_delay > 0:
+        print(f"Stealth Mode: Random delays up to {args.scan_delay}s between hosts")
     print("=" * 50)
     
     try:
@@ -268,21 +546,32 @@ def main():
             timeout=args.timeout,
             max_threads=args.threads,
             resolve_hostnames=not args.no_resolve_hostnames,
-            enumerate_shares=not args.no_enumerate_shares
+            enumerate_shares=not args.no_enumerate_shares,
+            randomize_scan=not args.no_randomize,
+            scan_delay=args.scan_delay
         )
         
         results = scanner.scan_network(args.target, ports_to_scan)
         
+        # Extract results from new structure
+        scan_results = results.get('scan_results', {}) if isinstance(results, dict) else results
+        share_results = results.get('share_results', {}) if isinstance(results, dict) else scanner.share_results
+        host_details = results.get('host_details', {}) if isinstance(results, dict) else {}
+        
         # Display results
-        if results:
+        if scan_results:
             print(f"\nScan Results:")
-            print(f"Found {len(results)} hosts with open ports:")
-            for host, ports in results.items():
-                print(f"  {host}: {len(ports)} open ports - {ports}")
+            print(f"Found {len(scan_results)} open ports across {len(host_details)} hosts:")
+            for host_ip, host_info in host_details.items():
+                open_ports = [port_data['port'] for port_data in host_info['open_ports']]
+                os_info = host_info.get('os_detection', {'os': 'Unknown'})
+                avg_response = host_info.get('avg_response_time', 'N/A')
+                print(f"  {host_ip}: {len(open_ports)} open ports - {open_ports}")
+                print(f"    OS: {os_info['os']}, Avg Response: {avg_response:.3f}ms" if avg_response != 'N/A' else f"    OS: {os_info['os']}, Avg Response: N/A")
             
-            if scanner.share_results:
+            if share_results:
                 print(f"\nShare Enumeration Results:")
-                for host, shares in scanner.share_results.items():
+                for host, shares in share_results.items():
                     if shares:
                         print(f"  {host}: {len(shares)} shares - {shares}")
             
@@ -291,7 +580,7 @@ def main():
                 print("\nGenerating custom D3.js visualization...")
                 if not args.no_resolve_hostnames:
                     print("Note: Hostnames will be shown in the graph as 'IP-hostname' format")
-                if not args.no_enumerate_shares and scanner.share_results:
+                if not args.no_enumerate_shares and share_results:
                     print("Note: Discovered shares will be connected to dedicated 'Shares' nodes for each host")
                 
                 # Create timestamped filename
@@ -299,23 +588,26 @@ def main():
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 html_filename = f"network_scan_{timestamp}.html"
                 
-                # Prepare scan data for embedding
+                # Prepare scan data for embedding with host details
                 scan_data = {
-                    'scan_results': results,
-                    'share_results': scanner.share_results if scanner.share_results else {},
+                    'scan_results': scan_results,
+                    'share_results': share_results,
+                    'host_details': host_details,
                     'timestamp': time.time(),
                     'scan_info': {
                         'target': args.target,
-                        'total_hosts': len(results),
+                        'total_hosts': len(host_details),
                         'scan_time': f"Completed at {time.strftime('%Y-%m-%d %H:%M:%S')}",
                         'ports_scanned': len(ports_to_scan),
                         'hostname_resolution': not args.no_resolve_hostnames,
-                        'share_enumeration': not args.no_enumerate_shares
+                        'share_enumeration': not args.no_enumerate_shares,
+                        'randomized_scan': not args.no_randomize,
+                        'stealth_mode': args.scan_delay > 0
                     }
                 }
                 
                 # Use custom D3.js graph (now the only option)
-                custom_graph = create_custom_graph_from_scan(results, scanner.share_results)
+                custom_graph = create_custom_graph_from_scan(scan_results, share_results, host_details)
                 output_file = custom_graph.save_and_show(html_filename, scan_data)
                 print(f"Custom D3 graph saved to: {output_file}")
                 print("Interactive graph opened in browser!")
