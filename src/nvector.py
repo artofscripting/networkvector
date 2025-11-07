@@ -628,7 +628,7 @@ def export_to_csv(scan_results, share_results, host_details, target, ports_scann
 
 def main():
     parser = argparse.ArgumentParser(description='Network Vector - Advanced Network Topology Scanner')
-    parser.add_argument('target', help='Target IP address or network (e.g., 192.168.1.1 or 192.168.1.0/24)')
+    parser.add_argument('target', help='Target IP address or network(s) - supports comma-separated CIDRs (e.g., 192.168.1.0/24 or 192.168.1.0/24,10.0.0.0/24,172.16.1.0/24)')
     parser.add_argument('--timeout', type=float, default=0.5, help='Connection timeout in seconds (default: 0.5)')
     parser.add_argument('--threads', type=int, default=1000, help='Maximum number of threads (default: 1000)')
     parser.add_argument('--ports', nargs='+', type=int, help='Custom ports to scan (default: top 100)')
@@ -643,9 +643,15 @@ def main():
     # Use custom ports if provided, otherwise use top 750
     ports_to_scan = args.ports if args.ports else TOP_750_PORTS
     
+    # Parse multiple CIDR networks separated by commas
+    target_networks = [target.strip() for target in args.target.split(',')]
+    
     print("=" * 50)
     print("🌐 Network Vector - Advanced Network Scanner")
-    print(f"Target: {args.target}")
+    if len(target_networks) > 1:
+        print(f"Targets: {len(target_networks)} networks - {', '.join(target_networks)}")
+    else:
+        print(f"Target: {target_networks[0]}")
     print(f"Ports: {len(ports_to_scan)} ports")
     print(f"Timeout: {args.timeout}s")
     print(f"Max Threads: {args.threads}")
@@ -657,7 +663,7 @@ def main():
     print("=" * 50)
     
     try:
-        # Create and run scanner
+        # Create scanner instance
         scanner = RawPortScanner(
             timeout=args.timeout,
             max_threads=args.threads,
@@ -667,7 +673,37 @@ def main():
             scan_delay=args.scan_delay
         )
         
-        results = scanner.scan_network(args.target, ports_to_scan)
+        # Initialize combined results
+        combined_scan_results = {}
+        combined_share_results = {}
+        combined_host_details = {}
+        
+        # Scan each target network
+        for i, target in enumerate(target_networks):
+            if len(target_networks) > 1:
+                print(f"\n🎯 Scanning network {i+1}/{len(target_networks)}: {target}")
+                print("-" * 40)
+            
+            # Scan current network
+            results = scanner.scan_network(target, ports_to_scan)
+            
+            # Extract results from current scan
+            current_scan_results = results.get('scan_results', {}) if isinstance(results, dict) else results
+            current_share_results = results.get('share_results', {}) if isinstance(results, dict) else scanner.share_results
+            current_host_details = results.get('host_details', {}) if isinstance(results, dict) else {}
+            
+            # Merge results into combined data
+            if current_scan_results:
+                combined_scan_results.update(current_scan_results)
+            if current_share_results:
+                combined_share_results.update(current_share_results)
+            if current_host_details:
+                combined_host_details.update(current_host_details)
+        
+        # Use combined results for the rest of the processing
+        scan_results = combined_scan_results
+        share_results = combined_share_results 
+        host_details = combined_host_details
         
         # Extract results from new structure
         scan_results = results.get('scan_results', {}) if isinstance(results, dict) else results
@@ -711,7 +747,8 @@ def main():
                     'host_details': host_details,
                     'timestamp': time.time(),
                     'scan_info': {
-                        'target': args.target,
+                        'target': args.target,  # Original comma-separated input
+                        'networks_scanned': len(target_networks),
                         'total_hosts': len(host_details),
                         'scan_time': f"Completed at {time.strftime('%Y-%m-%d %H:%M:%S')}",
                         'ports_scanned': len(ports_to_scan),
