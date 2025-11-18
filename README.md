@@ -29,13 +29,18 @@ Network Vector is a powerful, Python-based network scanning tool that performs c
 - **Host Categorization** - Visual host coloring based on detected operating systems
 
 ### 🎨 Visualization Features
+- **2D Force-Directed Graph** - Interactive D3.js v7 network visualization
+- **3D Force-Directed Graph** - Immersive 3D network topology using 3d-force-graph
 - **Professional Network Icons** - SVG-based network topology representation
 - **Host Icons** - PNG icons with embedded base64 encoding for self-contained HTML
+- **Text Labels** - Floating labels for hosts and shares in 3D view
 - **Color-coded Security** - Risk-based port classification (red=dangerous, blue=safe)
-- **Interactive Port Information** - Double-click ports for detailed descriptions and security assessments
-- **Sticky Node Behavior** - Drag-and-drop node positioning with persistence
+- **Interactive Port Information** - Click ports for detailed descriptions and security assessments
+- **Sticky Node Behavior** - Drag-and-drop node positioning with persistence (2D)
+- **Camera Controls** - Left-click rotate, right-click pan, scroll to zoom (3D)
+- **Node Focus** - Double-click nodes to focus camera view (3D)
 - **Collapsible UI Panels** - Hide/show Controls, Info Panel, and Legend to maximize graph space
-- **Collapse/Expand** - Right-click network nodes to manage complexity
+- **Collapse/Expand** - Right-click network nodes to manage complexity (2D)
 - **Self-contained Output** - HTML files with embedded assets, no external dependencies
 - **Embedded Scan Data** - Complete scan results embedded in HTML with "Show Scan Data" button
 - **CSV Data Export** - Download comprehensive scan data as CSV for analysis in Excel/databases
@@ -127,6 +132,12 @@ python src/nvector.py 192.168.1.0/24
 # Full feature scan with hostname resolution and SMB enumeration (default 1000 threads)
 python src/nvector.py 192.168.1.0/24 --resolve-hostnames --enumerate-shares
 
+# Generate 3D visualization in addition to 2D graph
+python src/nvector.py 192.168.1.0/24 --3d
+
+# Scan multiple networks with 3D visualization
+python src/nvector.py 192.168.1.0/24,10.0.0.0/24 --3d --timeout 1.5
+
 # Reduce threads for stealth scanning
 python src/nvector.py 192.168.1.0/24 --threads 50
 
@@ -171,8 +182,51 @@ python src/nvector.py 192.168.1.0/24 --no-resolve-hostnames --no-enumerate-share
 | `--no-enumerate-shares` | Disable SMB share enumeration | Enabled |
 | `--no-randomize` | Disable randomized scanning order | Randomization enabled |
 | `--scan-delay` | Max random delay between hosts (seconds) for stealth | 0.0 |
+| `--3d`, `--force-3d` | Generate additional 3D force-directed graph visualization | Disabled |
 
-## �️ Stealth Scanning & Evasion
+## 🎯 3D Visualization
+
+Network Vector now supports immersive 3D network topology visualization using the 3d-force-graph library.
+
+### Enable 3D Mode
+```bash
+# Generate both 2D and 3D visualizations
+python src/nvector.py 192.168.1.0/24 --3d
+
+# Scan multiple networks with 3D output
+python src/nvector.py 192.168.1.0/24,10.0.0.0/24 --3d
+```
+
+### 3D Features
+- **Interactive 3D Navigation**
+  - Left-click + drag to rotate the view
+  - Right-click + drag to pan
+  - Scroll to zoom in/out
+  - Double-click nodes to focus camera
+  
+- **Visual Elements**
+  - Floating text labels for hosts (white on black background)
+  - Floating text labels for shares (pink on dark red background)
+  - OS-based host node colors (same as 2D)
+  - Risk-based port node colors (red/blue)
+  - Yellow link connections
+  
+- **Output**
+  - Generates timestamped 3D HTML file (e.g., `network_scan_20251118_161541_3d.html`)
+  - Self-contained with all dependencies embedded
+  - Works offline with no external resources needed
+  - Same embedded scan data and CSV export features as 2D
+
+### Controls (3D View)
+- **Alt+C** - Toggle Controls panel
+- **Alt+I** - Toggle Info panel
+- **Alt+L** - Toggle Legend
+- **Click node** - Display node details
+- **Double-click node** - Focus camera on node
+
+## 🕵️ Stealth Scanning & Evasion
+
+## 🎯 3D Visualization
 
 Network Vector includes advanced stealth features to evade network security detection:
 
@@ -218,17 +272,27 @@ python src/nvector.py 192.168.1.0/24 --scan-delay 2.0 --threads 20 --timeout 1.5
 ## � Output Format
 
 ### Interactive HTML Visualization (Default)
-Network Vector generates a single, self-contained HTML file with:
+Network Vector generates self-contained HTML files with:
+
+#### 2D Visualization (Always Generated)
 - **Force-directed network graph** with D3.js v7
 - **Professional network topology** representation with SVG icons
-- **Interactive port information** with security details for 875+ ports
+- **Interactive port information** with security details for 130+ ports
 - **Collapsible UI controls** - Hide/show panels with keyboard shortcuts (Alt+C, Alt+I, Alt+L)
 - **CSV data export** - Download complete scan data for spreadsheet analysis
 - **Embedded scan data** - complete analysis data built into the HTML file
 - **Show Scan Data button** - view raw scan results without separate JSON files
 - **Responsive design** for desktop and mobile viewing
-- **Timestamped filename** for historical tracking (e.g., `network_scan_20251106_141532.html`)
+- **Timestamped filename** for historical tracking (e.g., `network_scan_20251118_161541.html`)
 - **No external dependencies** - works offline with all assets embedded
+
+#### 3D Visualization (--3d flag)
+- **Immersive 3D force-directed graph** using 3d-force-graph library
+- **Interactive camera controls** - Rotate, pan, zoom, and focus
+- **Floating text labels** - Host and share names visible in 3D space
+- **Same data and features** as 2D view with spatial depth
+- **Separate timestamped file** (e.g., `network_scan_20251118_161541_3d.html`)
+- **Fully self-contained** - no external libraries or resources needed
 
 ### Automatic CSV Export (--no-graph)
 When using `--no-graph`, Network Vector automatically exports results to CSV:

@@ -1239,6 +1239,713 @@ def create_custom_graph_from_scan(scan_results: Dict[str, List[int]], share_resu
     graph.generate_from_scan_results(scan_results, share_results, host_details)
     return graph
 
+class CustomD3Force3DGraph:
+    """
+    Generate 3D force-directed graphs using 3d-force-graph library.
+    """
+    
+    def __init__(self):
+        self.nodes = []
+        self.links = []
+        
+    def add_node(self, node_id: str, label: str = None, group: str = "default", color: str = None, size: int = 10, description: str = None, port: int = None):
+        """Add a node to the 3D graph."""
+        node_data = {
+            "id": node_id,
+            "label": label or node_id,
+            "group": group,
+            "color": color,
+            "size": size,
+            "description": description or ""
+        }
+        if port is not None:
+            node_data["port"] = port
+        
+        self.nodes.append(node_data)
+        
+    def add_link(self, source: str, target: str, weight: int = 1, color: str = "#FFFF00"):
+        """Add a link between two nodes in 3D."""
+        self.links.append({
+            "source": source,
+            "target": target,
+            "weight": weight,
+            "color": color
+        })
+    
+    def generate_from_scan_results(self, scan_results: Dict[str, List[int]], share_results: Dict[str, List[str]] = None, host_details: Dict = None):
+        """
+        Generate 3D graph data from port scan results.
+        Uses the same logic as 2D graph for consistency.
+        """
+        share_results = share_results or {}
+        host_details = host_details or {}
+        
+        # Clear existing data
+        self.nodes = []
+        self.links = []
+        
+        # Function to get OS-based colors (same as 2D)
+        def get_os_color(host_key):
+            host_detail = host_details.get(host_key, {})
+            os_detection = host_detail.get('os_detection', {})
+            os_name = os_detection.get('os', '').lower()
+            
+            if 'windows' in os_name:
+                return "#0078D4"
+            elif 'linux' in os_name or 'unix' in os_name:
+                return "#FCC624"
+            elif 'macos' in os_name or 'mac os' in os_name:
+                return "#9C27B0"
+            elif 'embedded' in os_name or 'iot' in os_name:
+                return "#FF5722"
+            else:
+                return "#607D8B"
+        
+        # Service mapping (same as 2D)
+        def get_service_name(port):
+            port_data = PORT_DESCRIPTIONS.get(port)
+            if port_data and isinstance(port_data, dict):
+                description = port_data.get('description', f'Port {port}')
+                service_name = description.split(" - ")[0] if " - " in description else description
+                service_name = service_name.replace("Apple ", "").replace("Microsoft ", "MS ").replace("Windows ", "Win ")
+                return service_name
+            
+            service_map = {
+                21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
+                80: "HTTP", 110: "POP3", 111: "RPC", 135: "RPC", 139: "NetBIOS",
+                143: "IMAP", 443: "HTTPS", 445: "SMB", 993: "IMAPS", 995: "POP3S",
+                1433: "MSSQL", 1521: "Oracle", 3306: "MySQL", 3389: "RDP", 
+                5432: "PostgreSQL", 5900: "VNC", 6379: "Redis", 8080: "HTTP-Alt",
+                8443: "HTTPS-Alt", 8888: "HTTP-Alt", 2049: "NFS", 548: "AFP",
+                587: "SMTP", 993: "IMAPS", 995: "POP3S", 389: "LDAP", 636: "LDAPS",
+                3268: "AD-GC", 3269: "AD-GC-SSL", 5985: "WinRM", 5986: "WinRM-S"
+            }
+            return service_map.get(port, "Unknown")
+        
+        def is_risky_port(port):
+            risky_ports = {
+                21, 23, 135, 139, 445, 1433, 3306, 3389, 5432, 5900, 6379, 1521, 2049, 111, 5985, 5986
+            }
+            return port in risky_ports
+        
+        # Add host nodes
+        for host, ports in scan_results.items():
+            host_color = get_os_color(host)
+            self.add_node(
+                node_id=host,
+                label=host,
+                group="host",
+                color=host_color,
+                size=15
+            )
+            
+            # Add port nodes
+            for port in ports:
+                port_id = f"{host}::{port}"
+                service_name = get_service_name(port)
+                port_description = get_port_description(port)
+                port_label = f"{port}/{service_name}"
+                
+                if is_risky_port(port):
+                    port_color = "#F44336"
+                    port_group = "risky_port"
+                else:
+                    port_color = "#2196F3"
+                    port_group = "port"
+                
+                self.add_node(
+                    node_id=port_id,
+                    label=port_label,
+                    group=port_group,
+                    color=port_color,
+                    size=10,
+                    description=port_description,
+                    port=port
+                )
+                
+                self.add_link(host, port_id, weight=2, color="#FFFF00")
+        
+        # Add network topology
+        network_hierarchy = {}
+        
+        for host in scan_results.keys():
+            if '-' in host:
+                ip_address = host.split('-')[0]
+            else:
+                ip_address = host
+            
+            ip_parts = ip_address.split('.')
+            if len(ip_parts) == 4:
+                class_a = ip_parts[0]
+                class_b = f"{ip_parts[0]}.{ip_parts[1]}"
+                class_c = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.0/24"
+                
+                if class_a not in network_hierarchy:
+                    network_hierarchy[class_a] = {"class_b": set(), "class_c": set(), "hosts": set()}
+                
+                network_hierarchy[class_a]["class_b"].add(class_b)
+                network_hierarchy[class_a]["class_c"].add(class_c)
+                network_hierarchy[class_a]["hosts"].add(host)
+        
+        # Create network nodes and links
+        for class_a, data in network_hierarchy.items():
+            class_a_id = f"network::class_a::{class_a}"
+            self.add_node(
+                node_id=class_a_id,
+                label=f"Network {class_a}.x.x.x",
+                group="network_a",
+                color="#607D8B",
+                size=18
+            )
+            
+            for class_b in data["class_b"]:
+                class_b_id = f"network::class_b::{class_b}"
+                self.add_node(
+                    node_id=class_b_id,
+                    label=f"Network {class_b}.x.x",
+                    group="network_b", 
+                    color="#795548",
+                    size=16
+                )
+                self.add_link(class_a_id, class_b_id, weight=3, color="#FFFF00")
+            
+            for class_c in data["class_c"]:
+                class_c_id = f"network::class_c::{class_c}"
+                self.add_node(
+                    node_id=class_c_id,
+                    label=class_c,
+                    group="network_c",
+                    color="#8BC34A",
+                    size=14
+                )
+                
+                class_c_prefix = '.'.join(class_c.split('.')[:2])
+                class_b_id = f"network::class_b::{class_c_prefix}"
+                self.add_link(class_b_id, class_c_id, weight=2, color="#FFFF00")
+            
+            for host in data["hosts"]:
+                host_ip = host.split('-')[0] if '-' in host else host
+                ip_parts = host_ip.split('.')
+                if len(ip_parts) == 4:
+                    host_class_c = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.0/24"
+                    class_c_id = f"network::class_c::{host_class_c}"
+                    self.add_link(class_c_id, host, weight=2, color="#FFFF00")
+        
+        # Handle share enumeration
+        for host, shares in share_results.items():
+            if shares:
+                shares_node_id = f"{host}::Shares"
+                self.add_node(
+                    node_id=shares_node_id,
+                    label=f"{host.split('-')[0]}-Shares",
+                    group="shares",
+                    color="#8B0000",
+                    size=10
+                )
+                self.add_link(host, shares_node_id, weight=2, color="#FFFF00")
+                
+                for share in shares:
+                    share_node_id = f"{host}::share::{share}"
+                    self.add_node(
+                        node_id=share_node_id,
+                        label=f"Share: {share}",
+                        group="share",
+                        color="#B71C1C",
+                        size=6
+                    )
+                    self.add_link(shares_node_id, share_node_id, weight=1, color="#FFFF00")
+    
+    def generate_html(self, title: str = "3D Network Topology", scan_data: Dict = None):
+        """
+        Generate HTML with 3d-force-graph library.
+        """
+        nodes_json = json.dumps(self.nodes, indent=2)
+        links_json = json.dumps(self.links, indent=2)
+        port_descriptions_json = json.dumps(PORT_DESCRIPTIONS, indent=2)
+        
+        scan_data_js = ""
+        if scan_data:
+            scan_data_json = json.dumps(scan_data, indent=2)
+            scan_data_js = f"""
+        window.SCAN_DATA = {scan_data_json};
+        console.log('📊 Scan data embedded:', window.SCAN_DATA);"""
+        
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <script src="https://unpkg.com/3d-force-graph"></script>
+    <style>
+        body {{
+            margin: 0;
+            padding: 0;
+            background: #000000;
+            font-family: 'Arial', sans-serif;
+            color: white;
+            overflow: hidden;
+        }}
+        
+        #3d-graph {{
+            width: 100vw;
+            height: 100vh;
+        }}
+        
+        .controls {{
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }}
+        
+        .info-panel {{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            max-width: 300px;
+        }}
+        
+        .legend {{
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 11px;
+        }}
+        
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            margin: 2px 0;
+        }}
+        
+        .legend-color {{
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }}
+        
+        .high-risk {{
+            color: #FF4444 !important;
+            font-weight: bold;
+        }}
+        
+        .medium-risk {{
+            color: #FFA500 !important;
+            font-weight: bold;
+        }}
+        
+        .secure {{
+            color: #4CAF50 !important;
+            font-weight: bold;
+        }}
+    </style>
+</head>
+<body>
+    <div id="3d-graph"></div>
+    
+    <div class="controls">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>🎮 3D Controls</strong>
+            <button onclick="toggleControls()" style="background: #1a237e; color: white; border: 1px solid #3949ab; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="controls-toggle">📚 Hide</button>
+        </div>
+        <div id="controls-content">
+            <div>• Left-click + drag to rotate</div>
+            <div>• Right-click + drag to pan</div>
+            <div>• Scroll to zoom</div>
+            <div>• Click nodes for details</div>
+            <div>• Double-click nodes to focus</div>
+            <div style="margin-top: 8px; font-size: 11px; color: #AAA;">
+                <strong>Keyboard Shortcuts:</strong><br>
+                • Alt+C: Toggle Controls<br>
+                • Alt+I: Toggle Info Panel<br>
+                • Alt+L: Toggle Legend
+            </div>
+            <button onclick="showScanData()" style="margin-top: 10px; background: #1a237e; color: white; border: 1px solid #FFFF00; padding: 5px; border-radius: 3px; cursor: pointer;">📄 Show Scan Data</button>
+            <button onclick="downloadCSV()" style="margin-top: 10px; margin-left: 5px; background: #388E3C; color: white; border: 1px solid #4CAF50; padding: 5px; border-radius: 3px; cursor: pointer;">📊 Download CSV</button>
+        </div>
+    </div>
+    
+    <div class="info-panel">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>📊 3D Network Graph</strong>
+            <button onclick="toggleInfoPanel()" style="background: #1a237e; color: white; border: 1px solid #3949ab; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="info-toggle">📚 Hide</button>
+        </div>
+        <div id="info-content">
+            <div id="node-count">Nodes: {len(self.nodes)}</div>
+            <div id="link-count">Links: {len(self.links)}</div>
+            <div id="selected-info"></div>
+        </div>
+    </div>
+    
+    <div class="legend">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>🎯 Legend</strong>
+            <button onclick="toggleLegend()" style="background: #1a237e; color: white; border: 1px solid #3949ab; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;" id="legend-toggle">📚 Hide</button>
+        </div>
+        <div id="legend-content">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #607D8B;"></div>
+                <span>Class A Networks</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #795548;"></div>
+                <span>Class B Networks</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #8BC34A;"></div>
+                <span>Class C Networks</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #F44336;"></div>
+                <span>⚠️ Risky Ports</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #2196F3;"></div>
+                <span>Safe Ports</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #8B0000;"></div>
+                <span>Shares Container</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #B71C1C;"></div>
+                <span>Individual Shares</span>
+            </div>
+            <hr style="border-color: #555; margin: 8px 0;">
+            <div style="font-weight: bold; margin-bottom: 5px; color: #fff;">🖥️ Host OS Detection</div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #0078D4;"></div>
+                <span>Windows Systems</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FCC624;"></div>
+                <span>Linux/Unix Systems</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #9C27B0;"></div>
+                <span>macOS Systems</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FF5722;"></div>
+                <span>Embedded/IoT Devices</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #607D8B;"></div>
+                <span>Unknown/Other OS</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const graphData = {{
+            nodes: {nodes_json},
+            links: {links_json}
+        }};
+        const portDescriptions = {port_descriptions_json};
+        {scan_data_js}
+        
+        console.log("🎯 Loading 3D force-directed graph...");
+        console.log("📊 Nodes:", graphData.nodes.length, "Links:", graphData.links.length);
+        
+        // Create 3D force graph
+        const Graph = ForceGraph3D()
+            (document.getElementById('3d-graph'))
+            .graphData(graphData)
+            .nodeLabel('label')
+            .nodeColor(node => node.color || '#69b3a2')
+            .nodeVal(node => node.size)
+            .linkColor(link => link.color || '#FFFF00')
+            .linkWidth(link => link.weight || 1)
+            .linkOpacity(0.6)
+            .onNodeClick(node => {{
+                const info = document.getElementById("selected-info");
+                let infoHtml = `<strong>Selected:</strong><br>` +
+                              `ID: ${{node.id}}<br>` +
+                              `Type: ${{node.group}}<br>` +
+                              `Label: ${{node.label}}`;
+                
+                if ((node.group === "port" || node.group === "risky_port") && node.description) {{
+                    const portNumber = node.port || node.id.split("::")[1];
+                    const portInfo = getPortDetails(parseInt(portNumber));
+                    const hostPart = node.id.split("::")[0];
+                    const hostIP = hostPart.split("-")[0];
+                    const securityClass = portInfo.security.includes('HIGH RISK') ? 'high-risk' :
+                                         portInfo.security.includes('SECURE') ? 'secure' : 'medium-risk';
+                    
+                    infoHtml += `<br><br><strong>🔌 Port ${{portNumber}} Details:</strong><br>` +
+                               `<span style="color: #4CAF50; font-weight: bold;">${{portInfo.description}}</span><br><br>` +
+                               `<strong>Service Details:</strong><br>` +
+                               `<span style="color: #BBB;">${{portInfo.details}}</span><br><br>` +
+                               `<strong>Security Assessment:</strong><br>` +
+                               `<span class="${{securityClass}}" style="font-weight: bold;">${{portInfo.security}}</span><br><br>` +
+                               `<strong>Learn More:</strong><br>` +
+                               `<a href="${{portInfo.link}}" target="_blank" rel="noopener" style="color: #4CAF50;">📖 Documentation</a><br><br>` +
+                               `<strong>🌐 Quick Access Links:</strong><br>` +
+                               `<a href="http://${{hostIP}}:${{portNumber}}" target="_blank" rel="noopener" style="color: #2196F3; margin-right: 10px;">🔗 HTTP</a>` +
+                               `<a href="https://${{hostIP}}:${{portNumber}}" target="_blank" rel="noopener" style="color: #4CAF50;">🔒 HTTPS</a>`;
+                }}
+                
+                info.innerHTML = infoHtml;
+            }})
+            .onNodeDoubleClick(node => {{
+                /* Focus on node */
+                const distance = 200;
+                const distRatio = 1 + distance/Math.hypot(node.x, node.y, node.z);
+                Graph.cameraPosition(
+                    {{ x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }},
+                    node,
+                    1000
+                );
+            }});
+        
+        function getPortDetails(port) {{
+            const portInfo = portDescriptions[port];
+            if (portInfo && typeof portInfo === 'object') {{
+                return portInfo;
+            }}
+            return {{
+                "description": `Port ${{port}} - Unknown/Custom application`,
+                "details": "No detailed information available for this port.",
+                "security": "UNKNOWN",
+                "link": "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers"
+            }};
+        }}
+        
+        function showScanData() {{
+            if (window.SCAN_DATA) {{
+                const scanInfo = window.SCAN_DATA.scan_info;
+                const totalHosts = Object.keys(window.SCAN_DATA.scan_results).length;
+                const totalShares = Object.keys(window.SCAN_DATA.share_results || {{}}).length;
+                
+                const info = `📊 SCAN RESULTS SUMMARY
+                
+🎯 Target: ${{scanInfo.target}}
+🖥️  Total Hosts Found: ${{totalHosts}}
+📂 Hosts with Shares: ${{totalShares}}
+🔍 Ports Scanned: ${{scanInfo.ports_scanned}}
+🌐 Hostname Resolution: ${{scanInfo.hostname_resolution ? 'Enabled' : 'Disabled'}}
+🗂️  Share Enumeration: ${{scanInfo.share_enumeration ? 'Enabled' : 'Disabled'}}
+⏰ Scan Time: ${{scanInfo.scan_time}}
+
+📋 DETAILED RESULTS:
+${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
+                
+                const popup = window.open('', 'ScanData', 'width=800,height=600,scrollbars=yes');
+                popup.document.write(`
+                    <html>
+                        <head><title>Network Vector - Scan Results (3D)</title></head>
+                        <body style="font-family: monospace; background: #1a237e; color: white; padding: 20px;">
+                            <h2>🌐 Network Vector - 3D Embedded Scan Data</h2>
+                            <pre style="white-space: pre-wrap; background: #000; padding: 15px; border-radius: 5px;">${{info}}</pre>
+                            <button onclick="window.close()" style="margin-top: 20px; background: #FFFF00; color: #000; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+                        </body>
+                    </html>
+                `);
+            }} else {{
+                alert('❌ No scan data found embedded in this file.');
+            }}
+        }}
+        
+        function downloadCSV() {{
+            if (!window.SCAN_DATA || !window.SCAN_DATA.scan_results) {{
+                alert('❌ No scan data available for CSV export.');
+                return;
+            }}
+            
+            const scanResults = window.SCAN_DATA.scan_results;
+            const shareResults = window.SCAN_DATA.share_results || {{}};
+            const hostDetails = window.SCAN_DATA.host_details || {{}};
+            const scanInfo = window.SCAN_DATA.scan_info;
+            
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Type,IP Address,Hostname,Port,Service,SMB Share,OS Detection,Response Time\\n";
+            
+            const escapeCsv = (field) => {{
+                if (typeof field === 'string' && field.includes(',')) {{
+                    return `"${{field.replace(/"/g, '""')}}"`;
+                }}
+                return field;
+            }};
+            
+            Object.keys(scanResults).forEach(hostKey => {{
+                const parts = hostKey.split('-');
+                const ip = parts[0];
+                const hostname = parts.length > 1 ? parts.slice(1).join('-') : 'Unknown';
+                const ports = scanResults[hostKey];
+                const shares = shareResults[hostKey] || [];
+                
+                const hostDetail = hostDetails[hostKey] || {{}};
+                const osDetection = hostDetail.os_detection || {{}};
+                const osInfo = osDetection.os ? `${{osDetection.os}} (${{osDetection.confidence || 'Unknown'}} confidence)` : 'Not Available';
+                const avgResponseTime = hostDetail.avg_response_time !== undefined ? 
+                    `${{(hostDetail.avg_response_time * 1000).toFixed(3)}}ms` : 'N/A';
+                
+                if (ports && ports.length > 0) {{
+                    ports.forEach(port => {{
+                        const portInfo = portDescriptions[port];
+                        const service = portInfo ? portInfo.description : `Port ${{port}}`;
+                        
+                        let portResponseTime = avgResponseTime;
+                        if (hostDetail.open_ports && Array.isArray(hostDetail.open_ports)) {{
+                            const portData = hostDetail.open_ports.find(p => p.port === port);
+                            if (portData && portData.response_time !== undefined) {{
+                                portResponseTime = `${{(portData.response_time * 1000).toFixed(3)}}ms`;
+                            }}
+                        }}
+                        
+                        csvContent += `Port,${{escapeCsv(ip)}},${{escapeCsv(hostname)}},${{port}},${{escapeCsv(service)}},,${{escapeCsv(osInfo)}},${{portResponseTime}}\\n`;
+                    }});
+                }}
+                
+                if (shares && shares.length > 0) {{
+                    shares.forEach(share => {{
+                        csvContent += `Share,${{escapeCsv(ip)}},${{escapeCsv(hostname)}},,,${{escapeCsv(share)}},${{escapeCsv(osInfo)}},${{avgResponseTime}}\\n`;
+                    }});
+                }}
+                
+                if ((!ports || ports.length === 0) && (!shares || shares.length === 0)) {{
+                    csvContent += `Host,${{escapeCsv(ip)}},${{escapeCsv(hostname)}},,,,,${{escapeCsv(osInfo)}},${{avgResponseTime}}\\n`;
+                }}
+            }});
+            
+            csvContent += "\\n# Scan Metadata\\n";
+            csvContent += `# Target: ${{scanInfo.target}}\\n`;
+            csvContent += `# Scan Time: ${{scanInfo.scan_time || 'Unknown'}}\\n`;
+            csvContent += `# Total Hosts: ${{Object.keys(scanResults).length}}\\n`;
+            csvContent += `# Ports Scanned: ${{scanInfo.ports_scanned || 'Unknown'}}\\n`;
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            
+            const now = new Date();
+            const timestamp = now.toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' + 
+                            now.toTimeString().split(' ')[0].replace(/:/g, '');
+            link.setAttribute("download", `network_scan_3d_${{timestamp}}.csv`);
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            console.log('📊 CSV export completed successfully');
+        }}
+        
+        function toggleControls() {{
+            const content = document.getElementById('controls-content');
+            const toggle = document.getElementById('controls-toggle');
+            
+            if (content.style.display === 'none') {{
+                content.style.display = 'block';
+                toggle.innerHTML = '📚 Hide';
+            }} else {{
+                content.style.display = 'none';
+                toggle.innerHTML = '📖 Show';
+            }}
+        }}
+        
+        function toggleInfoPanel() {{
+            const content = document.getElementById('info-content');
+            const toggle = document.getElementById('info-toggle');
+            
+            if (content.style.display === 'none') {{
+                content.style.display = 'block';
+                toggle.innerHTML = '📚 Hide';
+            }} else {{
+                content.style.display = 'none';
+                toggle.innerHTML = '📖 Show';
+            }}
+        }}
+        
+        function toggleLegend() {{
+            const content = document.getElementById('legend-content');
+            const toggle = document.getElementById('legend-toggle');
+            
+            if (content.style.display === 'none') {{
+                content.style.display = 'block';
+                toggle.innerHTML = '📚 Hide';
+            }} else {{
+                content.style.display = 'none';
+                toggle.innerHTML = '📖 Show';
+            }}
+        }}
+        
+        document.addEventListener('keydown', function(event) {{
+            if (event.altKey) {{
+                switch(event.key) {{
+                    case 'c':
+                    case 'C':
+                        toggleControls();
+                        event.preventDefault();
+                        break;
+                    case 'i':
+                    case 'I':
+                        toggleInfoPanel();
+                        event.preventDefault();
+                        break;
+                    case 'l':
+                    case 'L':
+                        toggleLegend();
+                        event.preventDefault();
+                        break;
+                }}
+            }}
+        }});
+        
+        console.log("✅ 3D force-directed graph loaded successfully!");
+    </script>
+</body>
+</html>
+        """
+        
+        return html_content
+    
+    def save_and_show(self, filename: str = "custom_network_graph_3d.html", scan_data: Dict = None, auto_open: bool = True):
+        """
+        Save the 3D HTML file with embedded scan data and optionally open it in the browser.
+        """
+        html_content = self.generate_html(scan_data=scan_data)
+        
+        filepath = os.path.abspath(filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        print(f"✅ 3D force-directed graph saved to: {filepath}")
+        print(f"📊 Graph contains {len(self.nodes)} nodes and {len(self.links)} links")
+        if scan_data:
+            print(f"📄 Scan results embedded in HTML for self-contained analysis")
+        
+        if auto_open:
+            try:
+                webbrowser.open(f"file://{filepath}")
+            except Exception as e:
+                print(f"⚠️ Could not auto-open browser: {e}")
+                print(f"📂 Manually open: {filepath}")
+        
+        return filepath
+
+def create_custom_3d_graph_from_scan(scan_results: Dict[str, List[int]], share_results: Dict[str, List[str]] = None, host_details: Dict = None):
+    """
+    Helper function to create a custom 3D graph from scan results.
+    """
+    graph = CustomD3Force3DGraph()
+    graph.generate_from_scan_results(scan_results, share_results, host_details)
+    return graph
+
 # Example usage
 if __name__ == "__main__":
     # Test with sample data

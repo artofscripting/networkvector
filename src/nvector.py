@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 
 # Import our custom D3 graph generator
-from custom_d3_graph import CustomD3ForceGraph, create_custom_graph_from_scan
+from custom_d3_graph import CustomD3ForceGraph, create_custom_graph_from_scan, create_custom_3d_graph_from_scan
 
 # Top 750 most commonly used TCP ports
 TOP_750_PORTS = [
@@ -239,7 +239,8 @@ class RawPortScanner:
                 if shares:
                     print(f"    Found {len(shares)} shares: {shares}")
                     self.share_results[host_display] = shares
-                    print(f"  Found shares: {shares}")
+                else:
+                    print(f"    No shares found or access denied")
    
     def detect_os(self, open_ports):
         """Enhanced OS detection based on comprehensive port patterns and signatures"""
@@ -637,6 +638,7 @@ def main():
     parser.add_argument('--no-enumerate-shares', action='store_true', help='Disable SMB share enumeration (enabled by default)')
     parser.add_argument('--no-randomize', action='store_true', help='Disable randomized scanning order (randomization enabled by default)')
     parser.add_argument('--scan-delay', type=float, default=0.0, help='Maximum random delay between host scans in seconds for stealth (default: 0.0)')
+    parser.add_argument('--3d', '--force-3d', dest='force_3d', action='store_true', help='Generate an additional 3D force-directed graph using d3-force-3d')
     
     args = parser.parse_args()
     
@@ -764,6 +766,15 @@ def main():
                 output_file = custom_graph.save_and_show(html_filename, scan_data)
                 print(f"Custom D3 graph saved to: {output_file}")
                 print("Interactive graph opened in browser!")
+                
+                # Generate 3D graph if requested
+                if args.force_3d:
+                    print("\nGenerating 3D force-directed visualization...")
+                    html_filename_3d = f"network_scan_{timestamp}_3d.html"
+                    custom_graph_3d = create_custom_3d_graph_from_scan(scan_results, share_results, host_details)
+                    output_file_3d = custom_graph_3d.save_and_show(html_filename_3d, scan_data)
+                    print(f"3D graph saved to: {output_file_3d}")
+                    print("Interactive 3D graph opened in browser!")
             else:
                 # Export to CSV when graph generation is skipped
                 print("\nGraph generation skipped. Exporting results to CSV...")
