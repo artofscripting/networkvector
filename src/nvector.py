@@ -109,18 +109,47 @@ class SMBShareEnumerator:
         return []
 
 class RawPortScanner:
-    def __init__(self, timeout=1.0, max_threads=1000, resolve_hostnames=False, enumerate_shares=False, randomize_scan=True, scan_delay=0.0):
+    def __init__(self, timeout=1.0, max_threads=1000, resolve_hostnames=False, enumerate_shares=False, randomize_scan=True, scan_delay=0.0, exempt_list=None):
         self.timeout = timeout
         self.max_threads = max_threads
         self.resolve_hostnames = resolve_hostnames
         self.enumerate_shares = enumerate_shares
         self.randomize_scan = randomize_scan
         self.scan_delay = scan_delay
+        self.exempt_list = exempt_list or []
+        self.exempt_networks = self._parse_exemptions()
         self.scan_results = defaultdict(list)
         self.host_details = {}  # Store detailed host information
         self.share_results = defaultdict(list) if enumerate_shares else None
         self.smb_enumerator = SMBShareEnumerator() if enumerate_shares else None
         self.hostname_cache = {}
+    
+    def _parse_exemptions(self):
+        """Parse exemption list into IP networks for efficient checking"""
+        networks = []
+        for item in self.exempt_list:
+            item = item.strip()
+            if not item:
+                continue
+            try:
+                # Try parsing as network (handles both single IPs and CIDRs)
+                if '/' not in item:
+                    item = f"{item}/32"  # Convert single IP to /32 network
+                networks.append(ipaddress.ip_network(item, strict=False))
+            except ValueError as e:
+                print(f"Warning: Invalid exemption '{item}': {e}")
+        return networks
+    
+    def is_exempt(self, ip):
+        """Check if an IP address is in the exemption list"""
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            for network in self.exempt_networks:
+                if ip_obj in network:
+                    return True
+            return False
+        except ValueError:
+            return False
         
     def resolve_hostname(self, ip):
         """Resolve hostname for an IP address with caching and timeout"""
@@ -202,7 +231,6 @@ class RawPortScanner:
                             'response_time': response_time
                         }
                         response_times.append(response_time)
-                        print(f"  {host_display}:{port} - OPEN ({response_time:.3f}s)")
                         
                         # Check if this is a file service port
                         if port in [445, 139, 2049]:  # SMB and NFS ports
@@ -233,14 +261,9 @@ class RawPortScanner:
             
             # Enumerate SMB shares if file services detected
             if self.enumerate_shares and file_service_ports and self.smb_enumerator:
-                print(f"  File services detected on {host_display} (ports: {file_service_ports})")
-                print(f"  Enumerating shares...")
                 shares = self.smb_enumerator.enumerate_shares(host_ip)
                 if shares:
-                    print(f"    Found {len(shares)} shares: {shares}")
                     self.share_results[host_display] = shares
-                else:
-                    print(f"    No shares found or access denied")
    
     def detect_os(self, open_ports):
         """Enhanced OS detection based on comprehensive port patterns and signatures"""
@@ -452,13 +475,21 @@ class RawPortScanner:
             }
         }
     
-    def scan_network(self, target, ports=None):
-        """Scan a network or single host"""
+    def scan_network(self, target, ports=None, on_host_complete=None):
+        """Scan a network or single host
+        
+        Args:
+            target: IP address or CIDR network to scan
+            ports: List of ports to scan
+            on_host_complete: Optional callback function called after each host with open ports is found.
+                              Receives (scan_results, share_results, host_details) as arguments.
+        """
         if ports is None:
             ports = TOP_750_PORTS
         
         start_time = time.time()
         self.host_details.clear()  # Clear previous scan data
+        self.on_host_complete = on_host_complete
         
         # Parse target
         try:
@@ -474,18 +505,29 @@ class RawPortScanner:
             # Single IP address
             hosts = [target]
         
+        # Filter out exempt hosts
+        if self.exempt_networks:
+            original_count = len(hosts)
+            hosts = [h for h in hosts if not self.is_exempt(h)]
+            exempt_count = original_count - len(hosts)
+            if exempt_count > 0:
+                print(f"Exempted {exempt_count} host(s) from scan based on exclusion rules")
+        
         # Randomize host order for stealth scanning (if enabled)
         if self.randomize_scan:
             random.shuffle(hosts)
-            print(f"Starting randomized scan of {len(hosts)} hosts with {len(ports)} ports each...")
-            print("Note: Scanning hosts and ports in random order to avoid detection patterns")
+            print(f"Starting scan of {len(hosts)} hosts with {len(ports)} ports each...")
+           
             if self.scan_delay > 0:
-                print(f"Note: Using random delays up to {self.scan_delay}s between hosts for stealth")
+                print(f"Note: Using delays up to {self.scan_delay}s between hosts")
         else:
-            print(f"Starting sequential scan of {len(hosts)} hosts with {len(ports)} ports each...")
+            print(f"Starting scan of {len(hosts)} hosts with {len(ports)} ports each...")
         
         # Scan hosts in parallel - increased parallelism for faster scanning
         max_host_workers = min(50, len(hosts)) if len(hosts) > 10 else len(hosts)
+        total_hosts = len(hosts)
+        completed_hosts = 0
+        
         with ThreadPoolExecutor(max_workers=max_host_workers) as executor:
             futures = [executor.submit(self.scan_host, host, ports) for host in hosts]
             
@@ -494,6 +536,21 @@ class RawPortScanner:
                     future.result()
                 except Exception as exc:
                     print(f"Host generated an exception: {exc}")
+                
+                completed_hosts += 1
+                percent = (completed_hosts / total_hosts) * 100
+                print(f"\rProgress: {completed_hosts}/{total_hosts} hosts ({percent:.1f}%)", end="", flush=True)
+                
+                # Call live callback if new hosts with open ports were found
+                if self.on_host_complete and len(self.host_details) > 0:
+                    try:
+                        self.on_host_complete(
+                            dict(self.scan_results),
+                            dict(self.share_results) if self.share_results else {},
+                            dict(self.host_details)
+                        )
+                    except Exception as e:
+                        pass  # Silently ignore callback errors to not interrupt scan
         
         end_time = time.time()
         print(f"\nScan completed in {end_time - start_time:.2f} seconds")
@@ -630,20 +687,29 @@ def export_to_csv(scan_results, share_results, host_details, target, ports_scann
 def main():
     parser = argparse.ArgumentParser(description='Network Vector - Advanced Network Topology Scanner')
     parser.add_argument('target', help='Target IP address or network(s) - supports comma-separated CIDRs (e.g., 192.168.1.0/24 or 192.168.1.0/24,10.0.0.0/24,172.16.1.0/24)')
-    parser.add_argument('--timeout', type=float, default=0.5, help='Connection timeout in seconds (default: 0.5)')
+    parser.add_argument('--timeout', type=float, default=3.0, help='Connection timeout in seconds (default: 3.0)')
     parser.add_argument('--threads', type=int, default=1000, help='Maximum number of threads (default: 1000)')
     parser.add_argument('--ports', nargs='+', type=int, help='Custom ports to scan (default: top 100)')
+    parser.add_argument('--all-ports', action='store_true', help='Scan all 65535 ports (warning: slow)')
+    parser.add_argument('--dig', action='store_true', help='Deep scan: scan all 65535 ports on any host found with open ports')
     parser.add_argument('--no-graph', action='store_true', help='Skip graph visualization and export results to CSV')
     parser.add_argument('--no-resolve-hostnames', action='store_true', help='Disable hostname resolution (enabled by default)')
     parser.add_argument('--no-enumerate-shares', action='store_true', help='Disable SMB share enumeration (enabled by default)')
     parser.add_argument('--no-randomize', action='store_true', help='Disable randomized scanning order (randomization enabled by default)')
-    parser.add_argument('--scan-delay', type=float, default=0.0, help='Maximum random delay between host scans in seconds for stealth (default: 0.0)')
+    parser.add_argument('--scan-delay', type=float, default=0.0, help='Maximum random delay between host scans in seconds (default: 0.0)')
     parser.add_argument('--3d', '--force-3d', dest='force_3d', action='store_true', help='Generate an additional 3D force-directed graph using d3-force-3d')
+    parser.add_argument('--live', action='store_true', help='Live mode: regenerate graphs after each host is scanned (requires graphs enabled)')
+    parser.add_argument('--exempt', type=str, help='Comma-separated list of IPs or CIDRs to exclude from scanning (e.g., 192.168.1.1,10.0.0.0/24)')
     
     args = parser.parse_args()
     
-    # Use custom ports if provided, otherwise use top 750
-    ports_to_scan = args.ports if args.ports else TOP_750_PORTS
+    # Use custom ports if provided, all ports if requested, otherwise use top 750
+    if args.all_ports:
+        ports_to_scan = list(range(1, 65536))
+    elif args.ports:
+        ports_to_scan = args.ports
+    else:
+        ports_to_scan = TOP_750_PORTS
     
     # Parse multiple CIDR networks separated by commas
     target_networks = [target.strip() for target in args.target.split(',')]
@@ -660,11 +726,22 @@ def main():
     print(f"Hostname Resolution: {'Enabled' if not args.no_resolve_hostnames else 'Disabled'}")
     print(f"Share Enumeration: {'Enabled' if not args.no_enumerate_shares else 'Disabled'}")
     print(f"Randomized Scanning: {'Enabled' if not args.no_randomize else 'Disabled'}")
+    if args.dig:
+        print(f"Deep Scan (Dig): Enabled - will scan all ports on discovered hosts")
+    if args.live and not args.no_graph:
+        print(f"Live Mode: Enabled - graphs will update after each host")
     if args.scan_delay > 0:
-        print(f"Stealth Mode: Random delays up to {args.scan_delay}s between hosts")
+        print(f"Scan Delay: Random delays up to {args.scan_delay}s between hosts")
+    if args.exempt:
+        print(f"Exemptions: {args.exempt}")
     print("=" * 50)
     
     try:
+        # Parse exemption list
+        exempt_list = []
+        if args.exempt:
+            exempt_list = [e.strip() for e in args.exempt.split(',')]
+        
         # Create scanner instance
         scanner = RawPortScanner(
             timeout=args.timeout,
@@ -672,7 +749,8 @@ def main():
             resolve_hostnames=not args.no_resolve_hostnames,
             enumerate_shares=not args.no_enumerate_shares,
             randomize_scan=not args.no_randomize,
-            scan_delay=args.scan_delay
+            scan_delay=args.scan_delay,
+            exempt_list=exempt_list
         )
         
         # Initialize combined results
@@ -680,14 +758,65 @@ def main():
         combined_share_results = {}
         combined_host_details = {}
         
+        # Create timestamped filename for live mode
+        from datetime import datetime
+        live_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        live_html_filename = f"network_scan_{live_timestamp}.html"
+        live_html_filename_3d = f"network_scan_{live_timestamp}_3d.html"
+        live_last_host_count = [0]  # Use list to allow modification in closure
+        
+        # Live callback function for real-time graph updates
+        def live_graph_callback(scan_results, share_results, host_details):
+            if args.no_graph or not args.live:
+                return
+            
+            # Only regenerate if new hosts were found
+            current_host_count = len(host_details)
+            if current_host_count <= live_last_host_count[0]:
+                return
+            live_last_host_count[0] = current_host_count
+            
+            try:
+                # Prepare scan data for embedding
+                scan_data = {
+                    'scan_results': scan_results,
+                    'share_results': share_results,
+                    'host_details': host_details,
+                    'timestamp': time.time(),
+                    'scan_info': {
+                        'target': args.target,
+                        'networks_scanned': len(target_networks),
+                        'total_hosts': len(host_details),
+                        'scan_time': f"Live scan - {time.strftime('%Y-%m-%d %H:%M:%S')}",
+                        'ports_scanned': len(ports_to_scan),
+                        'hostname_resolution': not args.no_resolve_hostnames,
+                        'share_enumeration': not args.no_enumerate_shares,
+                        'randomized_scan': not args.no_randomize,
+                        'live_mode': True
+                    }
+                }
+                
+                # Regenerate 2D graph (don't open browser, just save)
+                custom_graph = create_custom_graph_from_scan(scan_results, share_results, host_details)
+                custom_graph.save_html(live_html_filename, scan_data)
+                
+                # Regenerate 3D graph if requested
+                if args.force_3d:
+                    custom_graph_3d = create_custom_3d_graph_from_scan(scan_results, share_results, host_details)
+                    custom_graph_3d.save_html(live_html_filename_3d, scan_data)
+                    
+            except Exception as e:
+                pass  # Silently ignore errors to not interrupt scan
+        
         # Scan each target network
         for i, target in enumerate(target_networks):
             if len(target_networks) > 1:
                 print(f"\n🎯 Scanning network {i+1}/{len(target_networks)}: {target}")
                 print("-" * 40)
             
-            # Scan current network
-            results = scanner.scan_network(target, ports_to_scan)
+            # Scan current network with live callback if enabled
+            live_callback = live_graph_callback if args.live and not args.no_graph else None
+            results = scanner.scan_network(target, ports_to_scan, on_host_complete=live_callback)
             
             # Extract results from current scan
             current_scan_results = results.get('scan_results', {}) if isinstance(results, dict) else results
@@ -701,6 +830,37 @@ def main():
                 combined_share_results.update(current_share_results)
             if current_host_details:
                 combined_host_details.update(current_host_details)
+        
+        # Deep scan (dig) - scan all ports on discovered hosts
+        if args.dig and combined_host_details:
+            discovered_hosts = list(combined_host_details.keys())
+            print(f"\n🔍 Deep Scan (Dig): Scanning all 65535 ports on {len(discovered_hosts)} discovered host(s)...")
+            print("=" * 50)
+            
+            all_ports = list(range(1, 65536))
+            
+            for i, host_display in enumerate(discovered_hosts):
+                # Extract IP from host display (format: "IP" or "IP-hostname")
+                host_ip = host_display.split('-')[0] if '-' in host_display else host_display
+                
+                print(f"\n🎯 Deep scanning host {i+1}/{len(discovered_hosts)}: {host_display}")
+                
+                # Clear scanner results for this host to get fresh full scan
+                if host_display in scanner.scan_results:
+                    del scanner.scan_results[host_display]
+                if host_display in scanner.host_details:
+                    del scanner.host_details[host_display]
+                
+                # Scan single host with all ports
+                scanner.scan_host(host_ip, all_ports)
+                
+                # Update combined results with deep scan findings
+                if host_display in scanner.scan_results:
+                    combined_scan_results[host_display] = scanner.scan_results[host_display]
+                if host_display in scanner.host_details:
+                    combined_host_details[host_display] = scanner.host_details[host_display]
+            
+            print(f"\n✅ Deep scan complete!")
         
         # Use combined results for the rest of the processing
         scan_results = combined_scan_results

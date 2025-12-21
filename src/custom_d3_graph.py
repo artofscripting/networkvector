@@ -436,6 +436,94 @@ class CustomD3ForceGraph:
             color: #4CAF50 !important;
             font-weight: bold;
         }}
+        
+        /* Search styling */
+        .search-container {{
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #333;
+        }}
+        
+        .search-input {{
+            width: calc(100% - 30px);
+            padding: 6px 10px;
+            border: 1px solid #3949ab;
+            border-radius: 4px;
+            background: #1a237e;
+            color: white;
+            font-size: 12px;
+            outline: none;
+        }}
+        
+        .search-input:focus {{
+            border-color: #7C4DFF;
+            box-shadow: 0 0 5px rgba(124, 77, 255, 0.5);
+        }}
+        
+        .search-input::placeholder {{
+            color: #888;
+        }}
+        
+        .search-results {{
+            margin-top: 5px;
+            font-size: 11px;
+            color: #AAA;
+        }}
+        
+        .clear-search {{
+            background: #D32F2F;
+            color: white;
+            border: none;
+            padding: 3px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: 5px;
+            font-size: 11px;
+        }}
+        
+        .clear-search:hover {{
+            background: #F44336;
+        }}
+        
+        .nav-buttons {{
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }}
+        
+        .nav-btn {{
+            background: #1976D2;
+            color: white;
+            border: 1px solid #2196F3;
+            padding: 3px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            flex: 1;
+        }}
+        
+        .nav-btn:hover {{
+            background: #2196F3;
+        }}
+        
+        .nav-btn:disabled {{
+            background: #555;
+            border-color: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }}
+        
+        .search-highlight {{
+            stroke: #00BFFF !important;
+            stroke-width: 4px !important;
+            filter: drop-shadow(0 0 8px #00BFFF);
+        }}
+        
+        .search-highlight-label {{
+            fill: #00BFFF !important;
+            font-weight: bold !important;
+            text-shadow: 0 0 10px #00BFFF, 0 0 20px #00BFFF;
+        }}
     </style>
 </head>
 <body>
@@ -457,7 +545,9 @@ class CustomD3ForceGraph:
                     <strong>Keyboard Shortcuts:</strong><br>
                     • Alt+C: Toggle Controls<br>
                     • Alt+I: Toggle Info Panel<br>
-                    • Alt+L: Toggle Legend
+                    • Alt+L: Toggle Legend<br>
+                    • Alt+S: Focus Search<br>
+                    • Escape: Clear Search
                 </div>
                 <button onclick="showScanData()" style="margin-top: 10px; background: #1a237e; color: white; border: 1px solid #FFFF00; padding: 5px; border-radius: 3px; cursor: pointer;">📄 Show Scan Data</button>
                 <button onclick="downloadCSV()" style="margin-top: 10px; margin-left: 5px; background: #388E3C; color: white; border: 1px solid #4CAF50; padding: 5px; border-radius: 3px; cursor: pointer;">📊 Download CSV</button>
@@ -466,6 +556,18 @@ class CustomD3ForceGraph:
                     <button onclick="zoomReset()" style="background: #1976D2; color: white; border: 1px solid #2196F3; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🎯 Reset</button>
                     <button onclick="zoomOut()" style="background: #D32F2F; color: white; border: 1px solid #F44336; padding: 3px 6px; border-radius: 3px; cursor: pointer; margin-right: 5px;">🔍− Out</button>
                     <button onclick="zoomIn()" style="background: #388E3C; color: white; border: 1px solid #4CAF50; padding: 3px 6px; border-radius: 3px; cursor: pointer;">🔍+ In</button>
+                </div>
+                <div class="search-container">
+                    <strong>🔎 Search Graph</strong>
+                    <div style="margin-top: 5px; display: flex; align-items: center;">
+                        <input type="text" id="search-input" class="search-input" placeholder="Search nodes (IP, port, service...)" oninput="performSearch(this.value)" />
+                        <button class="clear-search" onclick="clearSearch()">✕</button>
+                    </div>
+                    <div id="search-results" class="search-results"></div>
+                    <div class="nav-buttons">
+                        <button class="nav-btn" id="prev-btn" onclick="navigatePrev()" disabled>◀ Previous</button>
+                        <button class="nav-btn" id="next-btn" onclick="navigateNext()" disabled>Next ▶</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -542,11 +644,17 @@ class CustomD3ForceGraph:
                     <div class="legend-color" style="background: #607D8B;"></div>
                     <span>Unknown/Other OS</span>
                 </div>
+                <hr style="border-color: #555; margin: 8px 0;">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00BFFF;"></div>
+                    <span>🔎 Search Result Highlight</span>
+                </div>
                 <div style="margin-top: 10px; font-size: 10px; color: #ccc;">
                     💡 Double-click share nodes to open in File Explorer<br>
                     🔒 Red ports indicate high security risk<br>
                     🎯 Host colors indicate detected operating system<br>
-                    🔍 Enhanced detection uses 100+ port signatures
+                    🔍 Enhanced detection uses 100+ port signatures<br>
+                    🔎 Alt+S to search, Escape to clear
                 </div>
             </div>
         </div>
@@ -763,7 +871,7 @@ class CustomD3ForceGraph:
             simulation.alpha(0.3).restart();
         }}
         
-        // Add labels
+        // Add labels - create them AFTER nodes so they render on top
         const labels = container.append("g")
             .attr("class", "labels")
             .selectAll("text")
@@ -771,10 +879,23 @@ class CustomD3ForceGraph:
             .enter().append("text")
             .attr("class", "node-label")
             .text(d => d.label)
-            .style("font-size", d => Math.max(8, d.size * 0.7) + "px");
+            .attr("x", d => d.x || 0)
+            .attr("y", d => d.y || 0)
+            .style("font-size", "10px")
+            .style("fill", "white")
+            .style("font-weight", "bold")
+            .style("pointer-events", "none")
+            .style("text-shadow", "-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 0px 3px rgba(0,0,0,0.9)")
+            .style("stroke", "#000")
+            .style("stroke-width", "0.5px")
+            .style("paint-order", "stroke fill")
+            .style("visibility", "visible");
         
         // Add click handlers
         allNodeElements.on("click", function(event, d) {{
+            // Highlight the selected node
+            highlightSelectedNode(d.id);
+            
             const info = document.getElementById("selected-info");
             let infoHtml = `<strong>Selected:</strong><br>` +
                           `ID: ${{d.id}}<br>` +
@@ -809,6 +930,73 @@ class CustomD3ForceGraph:
                            `<span style="color: #FCC624; font-size: 11px;">💡 Try: telnet ${{hostIP}} ${{portNumber}} or nc ${{hostIP}} ${{portNumber}}</span>`;
             }}
             
+            // Show synopsis of child nodes for host nodes
+            if (d.group === "host") {{
+                // Find all connected child nodes (ports, shares, etc.)
+                const childLinks = graphData.links.filter(link => {{
+                    const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                    const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                    return sourceId === d.id || targetId === d.id;
+                }});
+                
+                const childNodeIds = childLinks.map(link => {{
+                    const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                    const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                    return sourceId === d.id ? targetId : sourceId;
+                }});
+                
+                const childNodes = graphData.nodes.filter(n => childNodeIds.includes(n.id));
+                
+                // Categorize child nodes
+                const ports = childNodes.filter(n => n.group === 'port');
+                const riskyPorts = childNodes.filter(n => n.group === 'risky_port');
+                const shares = childNodes.filter(n => n.group === 'share');
+                
+                infoHtml += `<br><br><strong>📊 Host Synopsis:</strong>`;
+                
+                // Show risky ports first
+                if (riskyPorts.length > 0) {{
+                    infoHtml += `<br><br><span style="color: #F44336;">⚠️ Risky Ports (${{riskyPorts.length}}):</span><br>`;
+                    riskyPorts.slice(0, 5).forEach(p => {{
+                        const portNum = p.port || p.id.split("::")[1];
+                        const portInfo = getPortDetails(parseInt(portNum));
+                        infoHtml += `<span style="color: #F44336; margin-left: 10px;">• ${{portNum}} - ${{portInfo.description.split(' - ')[1] || 'Unknown'}}</span><br>`;
+                    }});
+                    if (riskyPorts.length > 5) {{
+                        infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{riskyPorts.length - 5}} more</span><br>`;
+                    }}
+                }}
+                
+                // Show safe ports
+                if (ports.length > 0) {{
+                    infoHtml += `<br><span style="color: #2196F3;">🔌 Open Ports (${{ports.length}}):</span><br>`;
+                    ports.slice(0, 5).forEach(p => {{
+                        const portNum = p.port || p.id.split("::")[1];
+                        const portInfo = getPortDetails(parseInt(portNum));
+                        infoHtml += `<span style="color: #2196F3; margin-left: 10px;">• ${{portNum}} - ${{portInfo.description.split(' - ')[1] || 'Unknown'}}</span><br>`;
+                    }});
+                    if (ports.length > 5) {{
+                        infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{ports.length - 5}} more</span><br>`;
+                    }}
+                }}
+                
+                // Show shares
+                if (shares.length > 0) {{
+                    infoHtml += `<br><span style="color: #B71C1C;">📁 Shares (${{shares.length}}):</span><br>`;
+                    shares.slice(0, 5).forEach(s => {{
+                        const shareName = s.label || s.id.split("::")[2] || 'Unknown';
+                        infoHtml += `<span style="color: #B71C1C; margin-left: 10px;">• ${{shareName}}</span><br>`;
+                    }});
+                    if (shares.length > 5) {{
+                        infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{shares.length - 5}} more</span><br>`;
+                    }}
+                }}
+                
+                // Summary
+                const totalItems = ports.length + riskyPorts.length + shares.length;
+                infoHtml += `<br><span style="color: #888; font-size: 11px;">Total: ${{totalItems}} connected items</span>`;
+            }}
+            
             info.innerHTML = infoHtml;
         }});
         
@@ -827,10 +1015,23 @@ class CustomD3ForceGraph:
             }};
         }}
         
-        // Add double-click handler for share nodes
+        // Add double-click handler to center and zoom to node
         allNodeElements.on("dblclick", function(event, d) {{
             event.stopPropagation(); // Prevent zoom behavior
             
+            // Center and zoom to the double-clicked node
+            const scale = 2.0; // Zoom level
+            const x = -d.x * scale + width / 2;
+            const y = -d.y * scale + height / 2;
+            
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+            
+            // Also highlight the node
+            highlightSelectedNode(d.id);
+            
+            // Special handling for share nodes - also try to open them
             if (d.group === "share") {{
                 // Extract IP and share name from share node
                 const parts = d.id.split("::");
@@ -849,35 +1050,11 @@ class CustomD3ForceGraph:
                     
                     // Try to open in file explorer
                     try {{
-                        // For Windows, use file:// protocol with UNC path
                         window.open(`file://${{uncPath}}`, '_blank');
-                        
-                        // Also try alternative method
-                        const link = document.createElement('a');
-                        link.href = `file://${{uncPath}}`;
-                        link.target = '_blank';
-                        link.click();
-                        
                     }} catch (error) {{
-                        // Fallback: show path for manual access
-                        const result = prompt(`Double-clicked share: ${{shareName}}\\n\\nUNC Path (copy to File Explorer):`, uncPath);
-                        if (result !== null) {{
-                            // Try to copy to clipboard if possible
-                            if (navigator.clipboard) {{
-                                navigator.clipboard.writeText(uncPath).then(() => {{
-                                    alert('UNC path copied to clipboard!');
-                                }}).catch(() => {{
-                                    console.log('Could not copy to clipboard');
-                                }});
-                            }}
-                        }}
+                        console.log('Could not open share:', error);
                     }}
                 }}
-            }} else {{
-                // For non-share nodes, release the fixed position
-                d.fx = null;
-                d.fy = null;
-                simulation.alpha(0.3).restart();
             }}
         }});
 
@@ -1174,8 +1351,288 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
             console.log('📊 CSV export completed successfully');
         }}
         
+        // Search functionality
+        let searchHighlightedNodes = [];
+        let originalNodeColors = new Map();
+        let currentSearchIndex = -1;
+        let currentNodeId = null; // Currently selected node via navigation
+        let selectedNodeId = null; // Node selected by clicking
+        
+        // Function to highlight the clicked/selected node
+        function highlightSelectedNode(nodeId) {{
+            selectedNodeId = nodeId;
+            
+            // Remove previous selection highlight (only if not in search mode)
+            if (searchHighlightedNodes.length === 0) {{
+                // Reset all nodes to normal
+                d3.selectAll('.circle-node')
+                    .style('filter', d => d.id === nodeId ? 'drop-shadow(0 0 10px #00BFFF)' : 'none')
+                    .style('stroke', d => d.id === nodeId ? '#00BFFF' : 'none')
+                    .style('stroke-width', d => d.id === nodeId ? '3px' : '0');
+                
+                d3.selectAll('.network-node path')
+                    .style('filter', d => d.id === nodeId ? 'drop-shadow(0 0 10px #00BFFF)' : 'none');
+                
+                d3.selectAll('.host-node circle:nth-child(2)')
+                    .style('filter', d => d.id === nodeId ? 'drop-shadow(0 0 10px #00BFFF)' : 'none')
+                    .style('stroke', d => d.id === nodeId ? '#00BFFF' : 'none')
+                    .style('stroke-width', d => d.id === nodeId ? '3px' : '0');
+                
+                // Highlight the label of selected node - RED color, bigger and bold
+                d3.selectAll('.node-label')
+                    .style('fill', d => d.id === nodeId ? '#FF0000' : '#fff')
+                    .style('font-size', d => d.id === nodeId ? '14px' : null)
+                    .style('font-weight', d => d.id === nodeId ? 'bold' : null);
+            }}
+        }}
+        
+        function updateNavButtons() {{
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const count = searchHighlightedNodes.length;
+            
+            prevBtn.disabled = count === 0 || currentSearchIndex <= 0;
+            nextBtn.disabled = count === 0 || currentSearchIndex >= count - 1;
+        }}
+        
+        function navigateToNode(nodeId) {{
+            // Find the node data
+            const node = nodes.find(n => n.id === nodeId);
+            if (!node || node.x === undefined || node.y === undefined) return;
+            
+            // Set current node and update label styling
+            currentNodeId = nodeId;
+            updateCurrentNodeLabel();
+            
+            // Calculate zoom transform to center on node
+            const scale = 1.5;
+            const x = -node.x * scale + width / 2;
+            const y = -node.y * scale + height / 2;
+            
+            // Animate to the node
+            svg.transition()
+                .duration(500)
+                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+            
+            // Update info panel
+            const info = document.getElementById("selected-info");
+            info.innerHTML = `<strong>Navigated to:</strong><br>${{node.label}}<br><span style="color: #FF0000;">(${{currentSearchIndex + 1}} of ${{searchHighlightedNodes.length}})</span>`;
+        }}
+        
+        function updateCurrentNodeLabel() {{
+            // Reset all labels to default styling
+            d3.selectAll('.node-label')
+                .style('fill', d => searchHighlightedNodes.includes(d.id) ? '#00BFFF' : '#fff')
+                .style('font-size', null)
+                .style('font-weight', d => d.id === currentNodeId ? 'bold' : null);
+            
+            // Apply red styling to current node label
+            d3.selectAll('.node-label')
+                .filter(d => d.id === currentNodeId)
+                .style('fill', '#FF0000')
+                .style('font-size', '1.5em')
+                .style('font-weight', 'bold');
+        }}
+        
+        function navigatePrev() {{
+            if (searchHighlightedNodes.length === 0 || currentSearchIndex <= 0) return;
+            currentSearchIndex--;
+            navigateToNode(searchHighlightedNodes[currentSearchIndex]);
+            updateNavButtons();
+            updateResultsDisplay();
+        }}
+        
+        function navigateNext() {{
+            if (searchHighlightedNodes.length === 0 || currentSearchIndex >= searchHighlightedNodes.length - 1) return;
+            currentSearchIndex++;
+            navigateToNode(searchHighlightedNodes[currentSearchIndex]);
+            updateNavButtons();
+            updateResultsDisplay();
+        }}
+        
+        function updateResultsDisplay() {{
+            const resultsDiv = document.getElementById('search-results');
+            const count = searchHighlightedNodes.length;
+            if (count > 0) {{
+                resultsDiv.innerHTML = `<span style="color: #00BFFF;">✓ ${{currentSearchIndex + 1}} of ${{count}} match${{count > 1 ? 'es' : ''}}</span>`;
+            }}
+        }}
+        
+        function performSearch(searchTerm) {{
+            // Clear previous highlights
+            clearSearchHighlights();
+            currentSearchIndex = -1;
+            
+            const resultsDiv = document.getElementById('search-results');
+            
+            if (!searchTerm || searchTerm.trim() === '') {{
+                resultsDiv.innerHTML = '';
+                updateNavButtons();
+                return;
+            }}
+            
+            const term = searchTerm.toLowerCase().trim();
+            let matchCount = 0;
+            
+            // Search through all nodes
+            nodes.forEach(node => {{
+                const matchesId = node.id.toLowerCase().includes(term);
+                const matchesLabel = node.label.toLowerCase().includes(term);
+                const matchesDescription = node.description && typeof node.description === 'string' && node.description.toLowerCase().includes(term);
+                const matchesGroup = node.group.toLowerCase().includes(term);
+                
+                if (matchesId || matchesLabel || matchesDescription || matchesGroup) {{
+                    // Store original color if not already stored
+                    if (!originalNodeColors.has(node.id)) {{
+                        originalNodeColors.set(node.id, node.color);
+                    }}
+                    searchHighlightedNodes.push(node.id);
+                    matchCount++;
+                }}
+            }});
+            
+            // Apply highlights
+            applySearchHighlights();
+            
+            // Update results display and navigation
+            if (matchCount > 0) {{
+                currentSearchIndex = 0;
+                resultsDiv.innerHTML = `<span style="color: #00BFFF;">✓ 1 of ${{matchCount}} match${{matchCount > 1 ? 'es' : ''}}</span>`;
+                navigateToNode(searchHighlightedNodes[0]);
+            }} else {{
+                resultsDiv.innerHTML = `<span style="color: #FF6B6B;">✗ No matches found</span>`;
+            }}
+            updateNavButtons();
+        }}
+        
+        function applySearchHighlights() {{
+            const isSearchActive = searchHighlightedNodes.length > 0;
+            
+            // Helper to check if a link connects to highlighted nodes
+            function isLinkHighlighted(d) {{
+                const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+                const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+                return searchHighlightedNodes.includes(sourceId) || searchHighlightedNodes.includes(targetId);
+            }}
+            
+            // Dim non-highlighted links FIRST (before nodes to ensure it works)
+            link.style('stroke', function(d) {{
+                    if (isSearchActive && !isLinkHighlighted(d)) return '#333333';
+                    return d.color || '#FFFF00';
+                }})
+                .style('opacity', function(d) {{
+                    if (isSearchActive && !isLinkHighlighted(d)) return 0.1;
+                    return 0.8;
+                }});
+            
+            // Highlight/dim circle nodes
+            d3.selectAll('.circle-node')
+                .classed('search-highlight', d => searchHighlightedNodes.includes(d.id))
+                .style('fill', d => {{
+                    if (searchHighlightedNodes.includes(d.id)) return d.color; // Keep original color, glow will highlight
+                    if (isSearchActive) return '#444444'; // Dim gray
+                    return d.color;
+                }})
+                .style('opacity', d => isSearchActive && !searchHighlightedNodes.includes(d.id) ? 0.3 : 1)
+                .style('filter', d => searchHighlightedNodes.includes(d.id) ? 'drop-shadow(0 0 8px #00BFFF)' : 'none');
+            
+            // Highlight/dim network nodes
+            d3.selectAll('.network-node path')
+                .style('fill', d => {{
+                    if (searchHighlightedNodes.includes(d.id)) return d.color;
+                    if (isSearchActive) return '#444444';
+                    return d.color;
+                }})
+                .style('opacity', d => isSearchActive && !searchHighlightedNodes.includes(d.id) ? 0.3 : 1)
+                .style('filter', d => searchHighlightedNodes.includes(d.id) ? 'drop-shadow(0 0 8px #00BFFF)' : 'none');
+            
+            // Highlight/dim host nodes
+            d3.selectAll('.host-node circle:nth-child(2)')
+                .style('fill', d => {{
+                    if (searchHighlightedNodes.includes(d.id)) return d.color;
+                    if (isSearchActive) return '#444444';
+                    return d.color;
+                }})
+                .style('opacity', d => isSearchActive && !searchHighlightedNodes.includes(d.id) ? 0.3 : 1)
+                .style('filter', d => searchHighlightedNodes.includes(d.id) ? 'drop-shadow(0 0 8px #00BFFF)' : 'none');
+            
+            // Dim host node images
+            d3.selectAll('.host-node image')
+                .style('opacity', d => isSearchActive && !searchHighlightedNodes.includes(d.id) ? 0.3 : 1);
+            
+            // Highlight/dim labels
+            d3.selectAll('.node-label')
+                .classed('search-highlight-label', d => searchHighlightedNodes.includes(d.id))
+                .style('fill', d => {{
+                    if (d.id === currentNodeId) return '#FF0000'; // Current node is red
+                    if (searchHighlightedNodes.includes(d.id)) return '#00BFFF';
+                    if (isSearchActive) return 'rgba(128,128,128,0.4)';
+                    return '#fff';
+                }})
+                .style('opacity', d => isSearchActive && !searchHighlightedNodes.includes(d.id) ? 0.4 : 1);
+        }}
+        
+        function clearSearchHighlights() {{
+            searchHighlightedNodes = [];
+            currentNodeId = null; // Clear current node marker
+            
+            // Remove highlights from circle nodes and restore original colors
+            d3.selectAll('.circle-node')
+                .classed('search-highlight', false)
+                .style('fill', d => d.color)
+                .style('opacity', 1)
+                .style('filter', 'none');
+            
+            // Remove highlights from network nodes
+            d3.selectAll('.network-node path')
+                .style('fill', d => d.color)
+                .style('opacity', 1)
+                .style('filter', 'none');
+            
+            // Remove highlights from host nodes
+            d3.selectAll('.host-node circle:nth-child(2)')
+                .style('fill', d => d.color)
+                .style('opacity', 1)
+                .style('filter', 'none');
+            
+            // Restore host node images
+            d3.selectAll('.host-node image')
+                .style('opacity', 1);
+            
+            // Remove label highlights and reset styling
+            d3.selectAll('.node-label')
+                .classed('search-highlight-label', false)
+                .style('fill', '#fff')
+                .style('opacity', 1)
+                .style('font-size', null)
+                .style('font-weight', null);
+            
+            // Restore links to original colors using the link variable
+            link.style('stroke', function(d) {{ return d.color || '#FFFF00'; }})
+                .style('opacity', 0.8);
+        }}
+        
+        function clearSearch() {{
+            const searchInput = document.getElementById('search-input');
+            const resultsDiv = document.getElementById('search-results');
+            
+            searchInput.value = '';
+            resultsDiv.innerHTML = '';
+            clearSearchHighlights();
+            currentSearchIndex = -1;
+            updateNavButtons();
+        }}
+        
         // Add keyboard shortcuts for quick panel toggling
         document.addEventListener('keydown', function(event) {{
+            // Handle Escape key to clear search
+            if (event.key === 'Escape') {{
+                clearSearch();
+                document.getElementById('search-input').blur();
+                event.preventDefault();
+                return;
+            }}
+            
             if (event.altKey) {{
                 switch(event.key) {{
                     case 'c':
@@ -1191,6 +1648,14 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
                     case 'l':
                     case 'L':
                         toggleLegend();
+                        event.preventDefault();
+                        break;
+                    case 's':
+                    case 'S':
+                        // Focus search input
+                        const searchInput = document.getElementById('search-input');
+                        searchInput.focus();
+                        searchInput.select();
                         event.preventDefault();
                         break;
                 }}
@@ -1229,6 +1694,16 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
                 print(f"⚠️ Could not auto-open browser: {e}")
                 print(f"📂 Manually open: {filepath}")
         
+        return filepath
+    
+    def save_html(self, filename: str = "custom_network_graph.html", scan_data: Dict = None):
+        """
+        Save the HTML file without opening in browser (for live mode updates).
+        """
+        html_content = self.generate_html(scan_data=scan_data)
+        filepath = os.path.abspath(filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(html_content)
         return filepath
 
 def create_custom_graph_from_scan(scan_results: Dict[str, List[int]], share_results: Dict[str, List[str]] = None, host_details: Dict = None):
@@ -1477,6 +1952,8 @@ class CustomD3Force3DGraph:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title}</title>
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three-spritetext@1.8.2/dist/three-spritetext.min.js"></script>
     <script src="https://unpkg.com/3d-force-graph"></script>
     <style>
         body {{
@@ -1553,6 +2030,82 @@ class CustomD3Force3DGraph:
             color: #4CAF50 !important;
             font-weight: bold;
         }}
+        
+        /* Search styling */
+        .search-container {{
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #333;
+        }}
+        
+        .search-input {{
+            width: calc(100% - 30px);
+            padding: 6px 10px;
+            border: 1px solid #3949ab;
+            border-radius: 4px;
+            background: #1a237e;
+            color: white;
+            font-size: 12px;
+            outline: none;
+        }}
+        
+        .search-input:focus {{
+            border-color: #7C4DFF;
+            box-shadow: 0 0 5px rgba(124, 77, 255, 0.5);
+        }}
+        
+        .search-input::placeholder {{
+            color: #888;
+        }}
+        
+        .search-results {{
+            margin-top: 5px;
+            font-size: 11px;
+            color: #AAA;
+        }}
+        
+        .clear-search {{
+            background: #D32F2F;
+            color: white;
+            border: none;
+            padding: 3px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: 5px;
+            font-size: 11px;
+        }}
+        
+        .clear-search:hover {{
+            background: #F44336;
+        }}
+        
+        .nav-buttons {{
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }}
+        
+        .nav-btn {{
+            background: #1976D2;
+            color: white;
+            border: 1px solid #2196F3;
+            padding: 3px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            flex: 1;
+        }}
+        
+        .nav-btn:hover {{
+            background: #2196F3;
+        }}
+        
+        .nav-btn:disabled {{
+            background: #555;
+            border-color: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }}
     </style>
 </head>
 <body>
@@ -1573,10 +2126,32 @@ class CustomD3Force3DGraph:
                 <strong>Keyboard Shortcuts:</strong><br>
                 • Alt+C: Toggle Controls<br>
                 • Alt+I: Toggle Info Panel<br>
-                • Alt+L: Toggle Legend
+                • Alt+L: Toggle Legend<br>
+                • Alt+S: Focus Search<br>
+                • Escape: Clear Search
             </div>
             <button onclick="showScanData()" style="margin-top: 10px; background: #1a237e; color: white; border: 1px solid #FFFF00; padding: 5px; border-radius: 3px; cursor: pointer;">📄 Show Scan Data</button>
             <button onclick="downloadCSV()" style="margin-top: 10px; margin-left: 5px; background: #388E3C; color: white; border: 1px solid #4CAF50; padding: 5px; border-radius: 3px; cursor: pointer;">📊 Download CSV</button>
+            <div class="search-container">
+                <strong>🔎 Search Graph</strong>
+                <div style="margin-top: 5px; display: flex; align-items: center;">
+                    <input type="text" id="search-input" class="search-input" placeholder="Search nodes (IP, port, service...)" oninput="performSearch(this.value)" />
+                    <button class="clear-search" onclick="clearSearch()">✕</button>
+                </div>
+                <div id="search-results" class="search-results"></div>
+                <div class="nav-buttons">
+                    <button class="nav-btn" id="prev-btn" onclick="navigatePrev()" disabled>◀ Previous</button>
+                    <button class="nav-btn" id="next-btn" onclick="navigateNext()" disabled>Next ▶</button>
+                </div>
+            </div>
+            <div style="margin-top: 15px; border-top: 1px solid #555; padding-top: 10px;">
+                <strong>🎬 Host Tour</strong>
+                <div class="nav-buttons" style="margin-top: 5px;">
+                    <button class="nav-btn" id="play-btn" onclick="toggleHostTour()" style="background: #388E3C;">▶ Play</button>
+                    <button class="nav-btn" id="stop-btn" onclick="stopHostTour()" disabled>⏹ Stop</button>
+                </div>
+                <div id="tour-status" style="margin-top: 5px; font-size: 11px; color: #aaa;"></div>
+            </div>
         </div>
     </div>
     
@@ -1648,6 +2223,14 @@ class CustomD3Force3DGraph:
                 <div class="legend-color" style="background: #607D8B;"></div>
                 <span>Unknown/Other OS</span>
             </div>
+            <hr style="border-color: #555; margin: 8px 0;">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #00BFFF;"></div>
+                <span>🔎 Search Result Highlight</span>
+            </div>
+            <div style="margin-top: 10px; font-size: 10px; color: #ccc;">
+                🔎 Alt+S to search, Escape to clear
+            </div>
         </div>
     </div>
 
@@ -1662,17 +2245,138 @@ class CustomD3Force3DGraph:
         console.log("🎯 Loading 3D force-directed graph...");
         console.log("📊 Nodes:", graphData.nodes.length, "Links:", graphData.links.length);
         
+        // Variables for node selection (must be declared before createNodeWithLabel)
+        let selectedNodeId = null; // Node selected by clicking
+        let searchActive = false; // Flag to track if search is active
+        let searchHighlightedNodes = new Set();
+        const originalNodeColors = new Map();
+        
+        // Store original colors
+        graphData.nodes.forEach(node => {{
+            originalNodeColors.set(node.id, node.color);
+        }});
+        
+        // Helper function to create node with label
+        function createNodeWithLabel(node, isHighlighted) {{
+            const group = new THREE.Group();
+            const nodeSize = (node.size || 5) * 0.5; // 50% smaller spheres
+            const isCurrent = node.__currentNode; // Currently selected via navigation
+            const isSelected = node.id === selectedNodeId; // Selected by clicking
+            const isDimmed = searchActive && !isHighlighted; // Dim if search active but not highlighted
+            const showGlow = isHighlighted || isSelected; // Show glow for highlighted OR selected nodes
+            // Keep original node color, don't change to light blue when highlighted
+            const originalColor = originalNodeColors.get(node.id) || node.color || '#69b3a2';
+            const nodeColor = parseInt(originalColor.replace('#', ''), 16);
+            
+            // Create the main sphere
+            const geometry = new THREE.SphereGeometry(nodeSize);
+            const material = new THREE.MeshLambertMaterial({{
+                color: isDimmed ? 0x444444 : nodeColor, // Gray out if dimmed
+                transparent: isDimmed,
+                opacity: isDimmed ? 0.3 : 1.0
+            }});
+            const sphere = new THREE.Mesh(geometry, material);
+            group.add(sphere);
+            
+            // Add glow effect for highlighted or selected nodes (single glow sphere)
+            if (showGlow) {{
+                const glowGeometry = new THREE.SphereGeometry(nodeSize * 2.0);
+                const glowMaterial = new THREE.MeshBasicMaterial({{
+                    color: 0x00BFFF,
+                    transparent: true,
+                    opacity: 0.25
+                }});
+                const glowSphere = new THREE.Mesh(glowGeometry, glowMaterial);
+                group.add(glowSphere);
+            }}
+            
+            // Create text label using SpriteText - always render on top
+            // Selected or currently navigated node gets red, bigger label on top layer
+            const isSpecial = isCurrent || isSelected; // Either clicked or navigated to
+            const sprite = new SpriteText(node.label);
+            // Label color: red for selected/current, dimmed gray if not highlighted during search, otherwise white
+            sprite.color = isSpecial ? '#FF0000' : (isDimmed ? 'rgba(128,128,128,0.4)' : 'white');
+            sprite.textHeight = isSpecial ? nodeSize * 0.6 : nodeSize * 0.4;  // 50% bigger for selected/current node
+            sprite.position.y = nodeSize + 2;
+            sprite.backgroundColor = isSpecial ? 'rgba(0,0,0,0.8)' : (isDimmed ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.6)');
+            sprite.padding = 0.5;
+            sprite.borderRadius = 1;
+            // Make label always visible on top layer (not hidden by nodes)
+            sprite.material.depthTest = false;
+            sprite.material.depthWrite = false;
+            sprite.renderOrder = isSpecial ? 9999 : 999;  // Selected/current node label on topmost layer
+            group.add(sprite);
+            
+            return group;
+        }}
+        
+        // Helper function to check if a link connects to highlighted nodes
+        function isLinkHighlighted(link) {{
+            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+            return searchHighlightedNodes.has(sourceId) || searchHighlightedNodes.has(targetId);
+        }}
+        
+        // Function to refresh node rendering (will be set after Graph is created)
+        let refreshNodes = null;
+        
         // Create 3D force graph
         const Graph = ForceGraph3D()
             (document.getElementById('3d-graph'))
             .graphData(graphData)
-            .nodeLabel('label')
+            .nodeLabel(null) // Disable hover labels since we have permanent ones
             .nodeColor(node => node.color || '#69b3a2')
             .nodeVal(node => node.size)
-            .linkColor(link => link.color || '#FFFF00')
+            .nodeThreeObject(node => createNodeWithLabel(node, node.__glowHighlight))
+            .nodeThreeObjectExtend(false)
+            .linkColor(link => {{
+                if (searchActive && !isLinkHighlighted(link)) {{
+                    return '#333333'; // Dimmed gray for non-highlighted links
+                }}
+                return link.color || '#FFFF00';
+            }})
             .linkWidth(link => link.weight || 1)
-            .linkOpacity(0.6)
-            .onNodeClick(node => {{
+            .linkOpacity(link => {{
+                if (searchActive && !isLinkHighlighted(link)) {{
+                    return 0.1; // Very dim for non-highlighted links
+                }}
+                return 0.6;
+            }});
+        
+        // Double-click detection variables
+        let lastClickTime = 0;
+        let lastClickedNode = null;
+        const DOUBLE_CLICK_DELAY = 300; // ms
+        
+        // Handle node clicks (single and double)
+        Graph.onNodeClick(node => {{
+            const currentTime = Date.now();
+            const isDoubleClick = (currentTime - lastClickTime < DOUBLE_CLICK_DELAY) && (lastClickedNode === node.id);
+            
+            lastClickTime = currentTime;
+            lastClickedNode = node.id;
+            
+            if (isDoubleClick) {{
+                // DOUBLE CLICK - Center camera on node and zoom in
+                const distance = 80; // Closer zoom for double-click
+                const distRatio = 1 + distance / Math.hypot(node.x || 0, node.y || 0, node.z || 0);
+                
+                Graph.cameraPosition(
+                    {{ x: (node.x || 0) * distRatio, y: (node.y || 0) * distRatio, z: (node.z || 0) * distRatio }},
+                    node,
+                    1000 // Animation duration
+                );
+            }}
+            
+            // SINGLE CLICK (always) - Set selected node and refresh to show glow
+            selectedNodeId = node.id;
+            // Use setTimeout to ensure Graph is fully initialized
+            setTimeout(() => {{
+                if (!searchActive) {{
+                        Graph.nodeThreeObject(n => createNodeWithLabel(n, n.__glowHighlight));
+                    }}
+                }}, 0);
+                
                 const info = document.getElementById("selected-info");
                 let infoHtml = `<strong>Selected:</strong><br>` +
                               `ID: ${{node.id}}<br>` +
@@ -1698,6 +2402,74 @@ class CustomD3Force3DGraph:
                                `<strong>🌐 Quick Access Links:</strong><br>` +
                                `<a href="http://${{hostIP}}:${{portNumber}}" target="_blank" rel="noopener" style="color: #2196F3; margin-right: 10px;">🔗 HTTP</a>` +
                                `<a href="https://${{hostIP}}:${{portNumber}}" target="_blank" rel="noopener" style="color: #4CAF50;">🔒 HTTPS</a>`;
+                }}
+                
+                // Show synopsis of child nodes for host nodes
+                if (node.group === "host") {{
+                    // Find all connected child nodes (ports, shares, etc.)
+                    const childLinks = graphData.links.filter(link => {{
+                        const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                        const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                        return sourceId === node.id || targetId === node.id;
+                    }});
+                    
+                    const childNodeIds = childLinks.map(link => {{
+                        const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                        const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                        return sourceId === node.id ? targetId : sourceId;
+                    }});
+                    
+                    const childNodes = graphData.nodes.filter(n => childNodeIds.includes(n.id));
+                    
+                    // Categorize child nodes
+                    const ports = childNodes.filter(n => n.group === 'port');
+                    const riskyPorts = childNodes.filter(n => n.group === 'risky_port');
+                    const shares = childNodes.filter(n => n.group === 'share');
+                    const shareContainers = childNodes.filter(n => n.group === 'shares_container');
+                    
+                    infoHtml += `<br><br><strong>📊 Host Synopsis:</strong>`;
+                    
+                    // Show risky ports first
+                    if (riskyPorts.length > 0) {{
+                        infoHtml += `<br><br><span style="color: #F44336;">⚠️ Risky Ports (${{riskyPorts.length}}):</span><br>`;
+                        riskyPorts.slice(0, 5).forEach(p => {{
+                            const portNum = p.port || p.id.split("::")[1];
+                            const portInfo = getPortDetails(parseInt(portNum));
+                            infoHtml += `<span style="color: #F44336; margin-left: 10px;">• ${{portNum}} - ${{portInfo.description.split(' - ')[1] || 'Unknown'}}</span><br>`;
+                        }});
+                        if (riskyPorts.length > 5) {{
+                            infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{riskyPorts.length - 5}} more</span><br>`;
+                        }}
+                    }}
+                    
+                    // Show safe ports
+                    if (ports.length > 0) {{
+                        infoHtml += `<br><span style="color: #2196F3;">🔌 Open Ports (${{ports.length}}):</span><br>`;
+                        ports.slice(0, 5).forEach(p => {{
+                            const portNum = p.port || p.id.split("::")[1];
+                            const portInfo = getPortDetails(parseInt(portNum));
+                            infoHtml += `<span style="color: #2196F3; margin-left: 10px;">• ${{portNum}} - ${{portInfo.description.split(' - ')[1] || 'Unknown'}}</span><br>`;
+                        }});
+                        if (ports.length > 5) {{
+                            infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{ports.length - 5}} more</span><br>`;
+                        }}
+                    }}
+                    
+                    // Show shares
+                    if (shares.length > 0) {{
+                        infoHtml += `<br><span style="color: #B71C1C;">📁 Shares (${{shares.length}}):</span><br>`;
+                        shares.slice(0, 5).forEach(s => {{
+                            const shareName = s.label || s.id.split("::")[2] || 'Unknown';
+                            infoHtml += `<span style="color: #B71C1C; margin-left: 10px;">• ${{shareName}}</span><br>`;
+                        }});
+                        if (shares.length > 5) {{
+                            infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{shares.length - 5}} more</span><br>`;
+                        }}
+                    }}
+                    
+                    // Summary
+                    const totalItems = ports.length + riskyPorts.length + shares.length;
+                    infoHtml += `<br><span style="color: #888; font-size: 11px;">Total: ${{totalItems}} connected items</span>`;
                 }}
                 
                 info.innerHTML = infoHtml;
@@ -1874,7 +2646,181 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
             }}
         }}
         
+        // Host Tour Animation
+        let hostTourInterval = null;
+        let hostTourIndex = 0;
+        let hostNodes = [];
+        let isTourPlaying = false;
+        
+        // Get all host nodes
+        hostNodes = graphData.nodes.filter(n => n.group === 'host');
+        
+        function toggleHostTour() {{
+            if (isTourPlaying) {{
+                pauseHostTour();
+            }} else {{
+                startHostTour();
+            }}
+        }}
+        
+        function startHostTour() {{
+            if (hostNodes.length === 0) {{
+                document.getElementById('tour-status').innerHTML = '<span style="color: #FF6B6B;">No hosts found</span>';
+                return;
+            }}
+            
+            isTourPlaying = true;
+            const playBtn = document.getElementById('play-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            playBtn.innerHTML = '⏸ Pause';
+            playBtn.style.background = '#F57C00';
+            stopBtn.disabled = false;
+            
+            // Start the tour
+            animateToHost(hostTourIndex);
+            
+            hostTourInterval = setInterval(() => {{
+                hostTourIndex = (hostTourIndex + 1) % hostNodes.length;
+                animateToHost(hostTourIndex);
+            }}, 4000); // 4 seconds per host for smooth transitions
+        }}
+        
+        function pauseHostTour() {{
+            isTourPlaying = false;
+            const playBtn = document.getElementById('play-btn');
+            playBtn.innerHTML = '▶ Play';
+            playBtn.style.background = '#388E3C';
+            
+            if (hostTourInterval) {{
+                clearInterval(hostTourInterval);
+                hostTourInterval = null;
+            }}
+        }}
+        
+        function stopHostTour() {{
+            pauseHostTour();
+            hostTourIndex = 0;
+            const stopBtn = document.getElementById('stop-btn');
+            stopBtn.disabled = true;
+            document.getElementById('tour-status').innerHTML = '';
+            
+            // Clear selection
+            selectedNodeId = null;
+            Graph.nodeThreeObject(n => createNodeWithLabel(n, n.__glowHighlight));
+        }}
+        
+        function animateToHost(index) {{
+            const node = hostNodes[index];
+            if (!node) return;
+            
+            // Update status
+            document.getElementById('tour-status').innerHTML = 
+                `<span style="color: #00BFFF;">🎯 ${{index + 1}}/${{hostNodes.length}}: ${{node.label}}</span>`;
+            
+            // Select the node
+            selectedNodeId = node.id;
+            Graph.nodeThreeObject(n => createNodeWithLabel(n, n.__glowHighlight));
+            
+            // Animate camera to node with smooth orbit-style movement
+            const distance = 150;
+            const nodePos = {{ x: node.x || 0, y: node.y || 0, z: node.z || 0 }};
+            const nodeDist = Math.hypot(nodePos.x, nodePos.y, nodePos.z) || 1;
+            
+            // Calculate camera position - slightly offset for cinematic effect
+            const angle = (index * 0.3) % (Math.PI * 2); // Vary angle per host
+            const cameraX = nodePos.x + Math.cos(angle) * distance;
+            const cameraY = nodePos.y + distance * 0.5; // Slightly above
+            const cameraZ = nodePos.z + Math.sin(angle) * distance;
+            
+            Graph.cameraPosition(
+                {{ x: cameraX, y: cameraY, z: cameraZ }},
+                nodePos,
+                2500 // Longer, smoother animation duration
+            );
+            
+            // Update info panel with full host synopsis
+            const info = document.getElementById("selected-info");
+            let infoHtml = `<strong>🎬 Touring Host ${{index + 1}}/${{hostNodes.length}}:</strong><br>` +
+                          `ID: ${{node.id}}<br>` +
+                          `Type: ${{node.group}}<br>` +
+                          `Label: ${{node.label}}`;
+            
+            // Build host synopsis - find all connected child nodes
+            const childLinks = graphData.links.filter(link => {{
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                return sourceId === node.id || targetId === node.id;
+            }});
+            
+            const childNodeIds = childLinks.map(link => {{
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                return sourceId === node.id ? targetId : sourceId;
+            }});
+            
+            const childNodes = graphData.nodes.filter(n => childNodeIds.includes(n.id));
+            
+            // Categorize child nodes
+            const ports = childNodes.filter(n => n.group === 'port');
+            const riskyPorts = childNodes.filter(n => n.group === 'risky_port');
+            const shares = childNodes.filter(n => n.group === 'share');
+            
+            infoHtml += `<br><br><strong>📊 Host Synopsis:</strong>`;
+            
+            // Show risky ports first
+            if (riskyPorts.length > 0) {{
+                infoHtml += `<br><br><span style="color: #F44336;">⚠️ Risky Ports (${{riskyPorts.length}}):</span><br>`;
+                riskyPorts.slice(0, 5).forEach(p => {{
+                    const portNum = p.port || p.id.split("::")[1];
+                    const portInfo = getPortDetails(parseInt(portNum));
+                    infoHtml += `<span style="color: #F44336; margin-left: 10px;">• ${{portNum}} - ${{portInfo.description.split(' - ')[1] || 'Unknown'}}</span><br>`;
+                }});
+                if (riskyPorts.length > 5) {{
+                    infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{riskyPorts.length - 5}} more</span><br>`;
+                }}
+            }}
+            
+            // Show safe ports
+            if (ports.length > 0) {{
+                infoHtml += `<br><span style="color: #2196F3;">🔌 Open Ports (${{ports.length}}):</span><br>`;
+                ports.slice(0, 5).forEach(p => {{
+                    const portNum = p.port || p.id.split("::")[1];
+                    const portInfo = getPortDetails(parseInt(portNum));
+                    infoHtml += `<span style="color: #2196F3; margin-left: 10px;">• ${{portNum}} - ${{portInfo.description.split(' - ')[1] || 'Unknown'}}</span><br>`;
+                }});
+                if (ports.length > 5) {{
+                    infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{ports.length - 5}} more</span><br>`;
+                }}
+            }}
+            
+            // Show shares
+            if (shares.length > 0) {{
+                infoHtml += `<br><span style="color: #B71C1C;">📁 Shares (${{shares.length}}):</span><br>`;
+                shares.slice(0, 5).forEach(s => {{
+                    const shareName = s.label || s.id.split("::")[2] || 'Unknown';
+                    infoHtml += `<span style="color: #B71C1C; margin-left: 10px;">• ${{shareName}}</span><br>`;
+                }});
+                if (shares.length > 5) {{
+                    infoHtml += `<span style="color: #888; margin-left: 10px;">... and ${{shares.length - 5}} more</span><br>`;
+                }}
+            }}
+            
+            // Summary
+            const totalItems = ports.length + riskyPorts.length + shares.length;
+            infoHtml += `<br><span style="color: #888; font-size: 11px;">Total: ${{totalItems}} connected items</span>`;
+            
+            info.innerHTML = infoHtml;
+        }}
+        
         document.addEventListener('keydown', function(event) {{
+            // Handle Escape key to clear search
+            if (event.key === 'Escape') {{
+                clearSearch();
+                document.getElementById('search-input').blur();
+                event.preventDefault();
+                return;
+            }}
+            
             if (event.altKey) {{
                 switch(event.key) {{
                     case 'c':
@@ -1892,9 +2838,176 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
                         toggleLegend();
                         event.preventDefault();
                         break;
+                    case 's':
+                    case 'S':
+                        // Focus search input
+                        const searchInput = document.getElementById('search-input');
+                        searchInput.focus();
+                        searchInput.select();
+                        event.preventDefault();
+                        break;
                 }}
             }}
         }});
+        
+        // Search functionality for 3D graph (some variables declared earlier for createNodeWithLabel)
+        let searchResultsArray = []; // For navigation
+        let currentSearchIndex = -1;
+        const HIGHLIGHT_COLOR = '#00BFFF'; // Light blue
+        
+        function updateNavButtons() {{
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const count = searchResultsArray.length;
+            
+            prevBtn.disabled = count === 0 || currentSearchIndex <= 0;
+            nextBtn.disabled = count === 0 || currentSearchIndex >= count - 1;
+        }}
+        
+        function navigateToNode(nodeId) {{
+            // Find the node data
+            const node = graphData.nodes.find(n => n.id === nodeId);
+            if (!node) return;
+            
+            // Clear previous current node marker and set new one
+            graphData.nodes.forEach(n => {{ n.__currentNode = false; }});
+            node.__currentNode = true;
+            
+            // Refresh graph to update node labels (current node gets red label)
+            Graph.nodeThreeObject(n => createNodeWithLabel(n, n.__glowHighlight));
+            
+            // Focus camera on the node with animation
+            const distance = 150;
+            const distRatio = 1 + distance / Math.hypot(node.x || 0, node.y || 0, node.z || 0);
+            
+            Graph.cameraPosition(
+                {{ x: (node.x || 0) * distRatio, y: (node.y || 0) * distRatio, z: (node.z || 0) * distRatio }},
+                node,
+                1000 // Animation duration in ms
+            );
+            
+            // Update info panel
+            const info = document.getElementById("selected-info");
+            info.innerHTML = `<strong>Navigated to:</strong><br>${{node.label}}<br><span style="color: #FF0000;">(${{currentSearchIndex + 1}} of ${{searchResultsArray.length}})</span>`;
+        }}
+        
+        function navigatePrev() {{
+            if (searchResultsArray.length === 0 || currentSearchIndex <= 0) return;
+            currentSearchIndex--;
+            navigateToNode(searchResultsArray[currentSearchIndex]);
+            updateNavButtons();
+            updateResultsDisplay();
+        }}
+        
+        function navigateNext() {{
+            if (searchResultsArray.length === 0 || currentSearchIndex >= searchResultsArray.length - 1) return;
+            currentSearchIndex++;
+            navigateToNode(searchResultsArray[currentSearchIndex]);
+            updateNavButtons();
+            updateResultsDisplay();
+        }}
+        
+        function updateResultsDisplay() {{
+            const resultsDiv = document.getElementById('search-results');
+            const count = searchResultsArray.length;
+            if (count > 0) {{
+                resultsDiv.innerHTML = `<span style="color: #00BFFF;">✓ ${{currentSearchIndex + 1}} of ${{count}} match${{count > 1 ? 'es' : ''}} (with glow)</span>`;
+            }}
+        }}
+        
+        function performSearch(searchTerm) {{
+            // Clear previous highlights
+            clearSearchHighlights();
+            currentSearchIndex = -1;
+            searchResultsArray = [];
+            
+            const resultsDiv = document.getElementById('search-results');
+            
+            if (!searchTerm || searchTerm.trim() === '') {{
+                resultsDiv.innerHTML = '';
+                updateNavButtons();
+                return;
+            }}
+            
+            const term = searchTerm.toLowerCase().trim();
+            let matchCount = 0;
+            
+            // Search through all nodes
+            graphData.nodes.forEach(node => {{
+                const matchesId = node.id.toLowerCase().includes(term);
+                const matchesLabel = node.label.toLowerCase().includes(term);
+                const matchesDescription = node.description && typeof node.description === 'string' && node.description.toLowerCase().includes(term);
+                const matchesGroup = node.group.toLowerCase().includes(term);
+                
+                if (matchesId || matchesLabel || matchesDescription || matchesGroup) {{
+                    searchHighlightedNodes.add(node.id);
+                    searchResultsArray.push(node.id);
+                    node.__glowHighlight = true; // Enable glow effect (keep original color)
+                    matchCount++;
+                }}
+            }});
+            
+            // Set search active flag for dimming non-highlighted nodes
+            searchActive = matchCount > 0;
+            
+            // Refresh the graph to show updated nodes with glow and labels
+            Graph.nodeThreeObject(node => createNodeWithLabel(node, node.__glowHighlight));
+            
+            // Force refresh links by re-setting linkColor and linkOpacity with new functions
+            Graph
+                .linkColor(link => {{
+                    if (searchActive && !isLinkHighlighted(link)) {{
+                        return '#333333';
+                    }}
+                    return link.color || '#FFFF00';
+                }})
+                .linkOpacity(link => {{
+                    if (searchActive && !isLinkHighlighted(link)) {{
+                        return 0.1;
+                    }}
+                    return 0.6;
+                }});
+            
+            // Update results display and navigation
+            if (matchCount > 0) {{
+                currentSearchIndex = 0;
+                resultsDiv.innerHTML = `<span style="color: #00BFFF;">✓ 1 of ${{matchCount}} match${{matchCount > 1 ? 'es' : ''}} (with glow)</span>`;
+                navigateToNode(searchResultsArray[0]);
+            }} else {{
+                resultsDiv.innerHTML = `<span style="color: #FF6B6B;">✗ No matches found</span>`;
+            }}
+            updateNavButtons();
+        }}
+        
+        function clearSearchHighlights() {{
+            // Remove glow and current node marker (no color restoration needed)
+            searchActive = false; // Clear search active flag
+            graphData.nodes.forEach(node => {{
+                node.__glowHighlight = false; // Disable glow effect
+                node.__currentNode = false; // Clear current node marker
+            }});
+            searchHighlightedNodes.clear();
+            searchResultsArray = [];
+            
+            // Refresh the graph - reset to normal rendering with labels
+            Graph.nodeThreeObject(node => createNodeWithLabel(node, node.__glowHighlight));
+            
+            // Force refresh links to restore original colors
+            Graph
+                .linkColor(link => link.color || '#FFFF00')
+                .linkOpacity(0.6);
+        }}
+        
+        function clearSearch() {{
+            const searchInput = document.getElementById('search-input');
+            const resultsDiv = document.getElementById('search-results');
+            
+            searchInput.value = '';
+            resultsDiv.innerHTML = '';
+            clearSearchHighlights();
+            currentSearchIndex = -1;
+            updateNavButtons();
+        }}
         
         console.log("✅ 3D force-directed graph loaded successfully!");
     </script>
@@ -1926,6 +3039,16 @@ ${{JSON.stringify(window.SCAN_DATA, null, 2)}}`;
                 print(f"⚠️ Could not auto-open browser: {e}")
                 print(f"📂 Manually open: {filepath}")
         
+        return filepath
+    
+    def save_html(self, filename: str = "custom_network_graph_3d.html", scan_data: Dict = None):
+        """
+        Save the 3D HTML file without opening in browser (for live mode updates).
+        """
+        html_content = self.generate_html(scan_data=scan_data)
+        filepath = os.path.abspath(filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(html_content)
         return filepath
 
 def create_custom_3d_graph_from_scan(scan_results: Dict[str, List[int]], share_results: Dict[str, List[str]] = None, host_details: Dict = None):

@@ -19,8 +19,13 @@ Network Vector is a powerful, Python-based network scanning tool that performs c
 ### 🚀 Core Capabilities
 - **Raw TCP Port Scanning** - Scans 750 unique ports without external dependencies
 - **Multi-threaded Performance** - Up to 1000 concurrent threads for fast scanning
-- **Randomized Scanning** - Randomizes IP and port scan order to evade detection patterns
-- **Stealth Mode** - Optional random delays between hosts for IDS evasion
+- **Deep Scan (Dig)** - Automatically scan all 65535 ports on discovered hosts with `--dig`
+- **All Ports Mode** - Scan all 65535 ports on entire network with `--all-ports`
+- **Progress Indicator** - Real-time percentage progress shown during scanning
+- **Live Mode** - Regenerate graphs in real-time as hosts are discovered with `--live`
+- **Randomized Scanning** - Randomizes IP and port scan order for balanced network load
+- **Configurable Delays** - Optional random delays between hosts for controlled scanning
+- **Host Exemptions** - Exclude specific IPs or CIDRs from scanning with `--exempt`
 - **Network Topology Discovery** - Automatic CIDR-based network hierarchy visualization
 - **Interactive D3.js Graphs** - Professional force-directed network visualizations
 - **SMB Share Enumeration** - Cross-platform Windows/Linux share discovery
@@ -31,6 +36,13 @@ Network Vector is a powerful, Python-based network scanning tool that performs c
 ### 🎨 Visualization Features
 - **2D Force-Directed Graph** - Interactive D3.js v7 network visualization
 - **3D Force-Directed Graph** - Immersive 3D network topology using 3d-force-graph
+- **Search & Navigation** - Find nodes by IP, hostname, or port with Previous/Next navigation
+- **Glow Highlighting** - Light blue glow effect on search results and selected nodes
+- **Click-to-Select** - Click any node to highlight with red label emphasis
+- **Double-Click Zoom** - Double-click nodes to center and zoom the view
+- **Host Tour Animation** - Play/Pause/Stop animated tour through all discovered hosts (3D)
+- **Host Synopsis Panel** - View connected ports and shares when selecting a host
+- **Dimming Effect** - Non-matching nodes dim during search for focus
 - **Professional Network Icons** - SVG-based network topology representation
 - **Host Icons** - PNG icons with embedded base64 encoding for self-contained HTML
 - **Text Labels** - Floating labels for hosts and shares in 3D view
@@ -138,13 +150,28 @@ python src/nvector.py 192.168.1.0/24 --3d
 # Scan multiple networks with 3D visualization
 python src/nvector.py 192.168.1.0/24,10.0.0.0/24 --3d --timeout 1.5
 
-# Reduce threads for stealth scanning
+# Deep scan - discover hosts then scan all 65535 ports on each
+python src/nvector.py 192.168.1.0/24 --dig
+
+# Scan all ports on entire network (slow but thorough)
+python src/nvector.py 192.168.1.0/24 --all-ports
+
+# Live mode - graphs update in real-time as hosts are found
+python src/nvector.py 192.168.1.0/24 --live --3d
+
+# Exempt specific hosts or subnets from scanning
+python src/nvector.py 192.168.1.0/24 --exempt 192.168.1.1,192.168.1.254
+
+# Exempt an entire subnet while scanning a larger range
+python src/nvector.py 10.0.0.0/16 --exempt 10.0.1.0/24,10.0.2.0/24
+
+# Reduce threads for controlled scanning
 python src/nvector.py 192.168.1.0/24 --threads 50
 
-# Stealth mode with randomized scanning and delays
+# Add delays between hosts for gentler scanning
 python src/nvector.py 192.168.1.0/24 --scan-delay 1.0 --threads 50
 
-# Disable randomization for fastest scanning
+# Disable randomization for sequential scanning
 python src/nvector.py 192.168.1.0/24 --no-randomize
 
 # Custom port range
@@ -152,9 +179,6 @@ python src/nvector.py 192.168.1.1 --ports 22 80 443 3389 5432
 
 # Custom timeout for slow networks
 python src/nvector.py 192.168.1.0/24 --timeout 2.0
-
-# Maximum stealth scanning
-python src/nvector.py 192.168.1.0/24 --scan-delay 2.0 --threads 20 --timeout 1.5
 
 # Maximum performance with executable
 ./nvector.exe 192.168.1.0/24 --threads 1000 --no-randomize
@@ -174,14 +198,18 @@ python src/nvector.py 192.168.1.0/24 --no-resolve-hostnames --no-enumerate-share
 | Option | Description | Default |
 |--------|-------------|---------|
 | `target` | IP address or network (e.g., 192.168.1.1 or 192.168.1.0/24) | Required |
-| `--timeout` | Connection timeout in seconds | 0.5 |
+| `--timeout` | Connection timeout in seconds | 3.0 |
 | `--threads` | Maximum number of scanning threads | 1000 |
 | `--ports` | Custom ports to scan | 750 common ports |
+| `--all-ports` | Scan all 65535 ports (slow) | Disabled |
+| `--dig` | Deep scan all 65535 ports on discovered hosts | Disabled |
+| `--live` | Live mode: regenerate graphs after each host found | Disabled |
+| `--exempt` | Comma-separated IPs or CIDRs to exclude from scanning | None |
 | `--no-graph` | Skip D3.js visualization generation and export to CSV | Enabled |
 | `--no-resolve-hostnames` | Disable reverse DNS lookup | Enabled |
 | `--no-enumerate-shares` | Disable SMB share enumeration | Enabled |
 | `--no-randomize` | Disable randomized scanning order | Randomization enabled |
-| `--scan-delay` | Max random delay between hosts (seconds) for stealth | 0.0 |
+| `--scan-delay` | Max random delay between hosts (seconds) | 0.0 |
 | `--3d`, `--force-3d` | Generate additional 3D force-directed graph visualization | Disabled |
 
 ## 🎯 3D Visualization
@@ -203,6 +231,23 @@ python src/nvector.py 192.168.1.0/24,10.0.0.0/24 --3d
   - Right-click + drag to pan
   - Scroll to zoom in/out
   
+- **Search & Highlighting**
+  - Search for hosts, IPs, or ports using the search box
+  - Light blue glow effect on matching nodes
+  - Previous/Next navigation through results
+  - Non-matching nodes dim for focus
+  
+- **Node Selection**
+  - Click any node to select and view details
+  - Selected node shows red, larger label
+  - Host synopsis shows connected ports and shares
+  
+- **Host Tour Animation**
+  - Play button starts animated tour through hosts
+  - Smooth cinematic camera movement
+  - Pause/Stop controls for tour
+  - Info panel updates with host synopsis during tour
+  
 - **Visual Elements**
   - Floating text labels for hosts (white on black background)
   - Floating text labels for shares (pink on dark red background)
@@ -220,55 +265,16 @@ python src/nvector.py 192.168.1.0/24,10.0.0.0/24 --3d
 - **Alt+C** - Toggle Controls panel
 - **Alt+I** - Toggle Info panel
 - **Alt+L** - Toggle Legend
-- **Click node** - Display node details
+- **Alt+S** - Focus search box
+- **Escape** - Clear search
+- **Click node** - Select and display node details with host synopsis
+- **Double-click node** - Center and zoom to node
 - **Left-click + drag** - Rotate view
 - **Right-click + drag** - Pan view
 - **Scroll** - Zoom in/out
-
-## 🕵️ Stealth Scanning & Evasion
-
-## 🎯 3D Visualization
-
-Network Vector includes advanced stealth features to evade network security detection:
-
-### 🎲 Randomized Scanning (Default)
-```bash
-# Default behavior - randomizes host and port order
-python src/nvector.py 192.168.1.0/24
-
-# Disable randomization for fastest performance
-python src/nvector.py 192.168.1.0/24 --no-randomize
-```
-
-**Benefits:**
-- ✅ Evades predictable scan pattern detection
-- ✅ Reduces IDS/IPS signature matching
-- ✅ Makes traffic analysis more difficult
-- ✅ No performance impact on scan speed
-
-### ⏱️ Stealth Mode with Timing Delays
-```bash
-# Add random delays up to 1 second between hosts
-python src/nvector.py 192.168.1.0/24 --scan-delay 1.0
-
-# Maximum stealth configuration
-python src/nvector.py 192.168.1.0/24 --scan-delay 2.0 --threads 20 --timeout 1.5
-```
-
-**Stealth Features:**
-- 🎯 **Random Host Order** - Scans hosts in unpredictable sequence
-- 🎲 **Random Port Order** - Randomizes port scanning sequence per host
-- ⏰ **Variable Timing** - Random delays between hosts (0 to `--scan-delay` seconds)
-- 🔄 **Thread Limiting** - Reduces concurrent connections for lower footprint
-
-### 🛡️ Detection Evasion Strategies
-
-| Technique | Purpose | Command Example |
-|-----------|---------|-----------------|
-| **Randomized Order** | Avoid pattern detection | `--scan-delay 0.0` (default) |
-| **Slow Scanning** | Evade rate-based detection | `--scan-delay 2.0 --threads 50` |
-| **Low Profile** | Minimize concurrent connections | `--threads 10 --timeout 2.0` |
-| **Targeted Scanning** | Reduce noise with specific ports | `--ports 80 443 22` |
+- **Play button** - Start host tour animation
+- **Pause button** - Pause host tour
+- **Stop button** - Stop host tour and reset
 
 ## � Output Format
 
@@ -347,16 +353,12 @@ Network Vector scans **998 unique ports** covering:
 - **Authorized Testing Only** - Only scan networks you own or have permission to test
 - **Responsible Disclosure** - Report vulnerabilities through proper channels
 
-### Detection Avoidance
-Network Vector performs basic TCP scanning which may be detected by:
-- Intrusion Detection Systems (IDS)
-- Firewall logs
-- Network monitoring tools
-
-For stealth scanning, consider:
-- Reducing thread count (`--threads 1-10`)
-- Increasing timeout values (`--timeout 2.0`)
-- Scanning during low-traffic periods
+### Responsible Scanning
+Network Vector performs TCP scanning which generates network traffic. For responsible scanning:
+- Use `--exempt` to exclude sensitive hosts
+- Use appropriate thread counts for your network
+- Use `--scan-delay` to reduce scanning speed when needed
+- Always obtain proper authorization before scanning
 
 ## 🤝 Contributing
 
